@@ -1,25 +1,5 @@
 import Foundation
 
-/// Controls whether the SDK intercepts and captures URLSession traffic.
-///
-/// When both the APXY proxy and the SDK are active on the same device,
-/// use `.auto` (the default) to avoid double-capturing every request.
-public enum ApxyCaptureMode: Sendable {
-    /// Automatically detect whether the APXY proxy is running.
-    /// If the proxy is active, skip URLSession interception (the proxy already
-    /// captures everything). If the proxy is inactive, activate interception.
-    /// This is the recommended default for development builds.
-    case auto
-    /// Always intercept traffic regardless of proxy state.
-    /// Use this only when you explicitly want SDK capture alongside the proxy
-    /// (e.g. comparing SDK-specific session metadata with raw proxy records).
-    case alwaysCapture
-    /// Never intercept traffic. The SDK will still register the client and
-    /// manage sessions, but no NetworkRecords will be sent from the SDK.
-    /// Use this when the proxy is your sole capture mechanism.
-    case sessionOnly
-}
-
 /// Transport strategy for sending captured records to APXY Core.
 public enum ApxyTransport: Sendable {
     /// Batch POST every `flushInterval` seconds (default).
@@ -71,10 +51,6 @@ public struct ApxyOptions: Sendable {
     /// transition starts a new session instead of resuming the current one.
     /// Default: 1800 seconds (30 minutes).
     public var sessionIdleTimeout: TimeInterval
-    /// Controls whether the SDK intercepts URLSession traffic.
-    /// Default: `.auto` — detects whether the APXY proxy is running and skips
-    /// interception when it is, avoiding duplicate records.
-    public var captureMode: ApxyCaptureMode
 
     public init(
         transport: ApxyTransport = .auto,
@@ -84,8 +60,7 @@ public struct ApxyOptions: Sendable {
         logLevel: ApxyLogLevel = .warning,
         onConnectionEvent: (@Sendable (ApxyConnectionEvent) -> Void)? = nil,
         capturedDomains: [String]? = nil,
-        sessionIdleTimeout: TimeInterval = 1800,
-        captureMode: ApxyCaptureMode = .auto
+        sessionIdleTimeout: TimeInterval = 1800
     ) {
         self.transport = transport
         self.enableInRelease = enableInRelease
@@ -95,6 +70,5 @@ public struct ApxyOptions: Sendable {
         self.onConnectionEvent = onConnectionEvent
         self.capturedDomains = capturedDomains
         self.sessionIdleTimeout = sessionIdleTimeout
-        self.captureMode = captureMode
     }
 }

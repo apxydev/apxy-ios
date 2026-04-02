@@ -1,28 +1,27 @@
 import Foundation
 
 /// Real-time WebSocket transport: streams records one-by-one to APXY Core.
-/// Automatically reconnects on disconnect. Falls back to HTTP flush on failure.
+/// Automatically reconnects on disconnect.
 @available(iOS 13.0, macOS 10.15, *)
-final class WebSocketTransport: RecordTransport, @unchecked Sendable {
+actor WebSocketTransport: RecordTransport {
     private let serverURL: URL
-    private let buffer: RecordBuffer
     private let session: URLSession
     private let connectionStateTracker: ConnectionStateTracker
     private var wsTask: URLSessionWebSocketTask?
     private var reconnectDelay: TimeInterval = 1.0
-    private var stopped = false
+    private var isRunning = false
     private var lastDisconnectLogAt: TimeInterval = 0
     private let disconnectLogThrottleSeconds: TimeInterval = 2.0
+    private var reconnectTask: Task<Void, Never>?
 
     private let encoder: JSONEncoder = {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
-        return e
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
     }()
 
-    init(serverURL: URL, buffer: RecordBuffer, connectionStateTracker: ConnectionStateTracker) {
+    init(serverURL: URL, connectionStateTracker: ConnectionStateTracker) {
         self.serverURL = serverURL
-        self.buffer = buffer
         self.connectionStateTracker = connectionStateTracker
 
         let config = URLSessionConfiguration.default
@@ -30,101 +29,171 @@ final class WebSocketTransport: RecordTransport, @unchecked Sendable {
         self.session = URLSession(configuration: config)
     }
 
-    func start() {
-        stopped = false
-        connect()
+    func start() async {
+        guard !isRunning else { return }
+        isRunning = true
+        await connect()
     }
 
-    func stop() {
-        stopped = true
+    func stop() async {
+        isRunning = false
+        reconnectTask?.cancel()
+        reconnectTask = nil
         wsTask?.cancel(with: .normalClosure, reason: nil)
         wsTask = nil
     }
 
-    func send(records: [NetworkRecord], completion: @escaping (Error?) -> Void) {
+    func send(records: [NetworkRecord]) async throws {
         guard let task = wsTask, task.state == .running else {
-            for r in records { buffer.append(r) }
-            SDKLogger.debug("WebSocket not running; re-buffered \(records.count) record(s)")
-            completion(nil)
-            return
+            throw SDKError.transportUnavailable
         }
-        guard let data = try? encoder.encode(records) else {
-            completion(SDKError.encodingFailed)
-            return
-        }
-        task.send(.data(data)) { [weak self] error in
-            guard let self else { return }
-            if let error {
-                let reason = error.localizedDescription
-                SDKLogger.warn("WebSocketTransport send failed: \(reason)")
-                self.connectionStateTracker.reportServerEndpointFailure(reason: reason)
-                completion(error)
-            } else {
-                self.connectionStateTracker.reportServerEndpointSuccess()
-                completion(nil)
-            }
+
+        let data = try encoder.encode(records)
+
+        do {
+            try await sendMessage(.data(data), on: task)
+            await connectionStateTracker.reportServerEndpointSuccess()
+        } catch {
+            let reason = error.localizedDescription
+            SDKLogger.warn("WebSocketTransport send failed: \(reason)")
+            await connectionStateTracker.reportServerEndpointFailure(reason: reason)
+            await scheduleReconnect()
+            throw error
         }
     }
 
-    // MARK: Connection
+    private func connect() async {
+        guard let url = Self.webSocketURL(for: serverURL) else {
+            SDKLogger.warn("WebSocketTransport: invalid serverURL '\(serverURL.absoluteString)'")
+            await connectionStateTracker.reportServerEndpointFailure(reason: "Invalid WebSocket URL")
+            return
+        }
 
-    private func connect() {
-        guard let url = URL(string: "/api/v1/sdk/traffic/ws", relativeTo: serverURL) else { return }
         let host = serverURL.host ?? "?"
         SDKLogger.debug("WebSocketTransport connecting host=\(host) path=\(url.path)")
+
         var request = URLRequest(url: url)
         request.setValue("1", forHTTPHeaderField: "X-Apxy-SDK-Internal")
-        wsTask = session.webSocketTask(with: request)
-        wsTask?.resume()
+
+        let task = session.webSocketTask(with: request)
+        wsTask = task
+        task.resume()
         reconnectDelay = 1.0
-        flushBuffered()
-        listenForMessages()
+        listenForMessages(on: task)
     }
 
-    private func listenForMessages() {
-        wsTask?.receive { [weak self] result in
-            guard let self, !self.stopped else { return }
-            switch result {
-            case .failure(let error):
+    private func listenForMessages(on task: URLSessionWebSocketTask) {
+        Task {
+            do {
+                while shouldContinueListening(task) {
+                    _ = try await receiveMessage(on: task)
+                }
+            } catch {
+                guard shouldHandleDisconnect(for: task) else { return }
+
                 let reason = error.localizedDescription
                 let now = ProcessInfo.processInfo.systemUptime
-                let delta = now - self.lastDisconnectLogAt
-                if self.lastDisconnectLogAt == 0 || delta >= self.disconnectLogThrottleSeconds {
+                let previousDisconnect = lastDisconnectTimestamp()
+                let delta = now - previousDisconnect
+
+                if previousDisconnect == 0 || delta >= disconnectLogThrottleSeconds {
                     SDKLogger.warn("WebSocketTransport disconnected: \(error)")
-                    self.lastDisconnectLogAt = now
+                    setLastDisconnectTimestamp(now)
                 } else {
                     SDKLogger.debug("WebSocketTransport disconnected (throttled): \(error)")
                 }
-                self.connectionStateTracker.reportTransportDisconnected(reason: reason)
-                self.connectionStateTracker.reportServerEndpointFailure(reason: "WebSocket: \(reason)")
-                self.scheduleReconnect()
-            case .success:
-                self.listenForMessages()
+
+                await connectionStateTracker.reportTransportDisconnected(reason: reason)
+                await connectionStateTracker.reportServerEndpointFailure(reason: "WebSocket: \(reason)")
+                await scheduleReconnect()
             }
         }
     }
 
-    private func scheduleReconnect() {
-        guard !stopped else { return }
-        DispatchQueue.global().asyncAfter(deadline: .now() + reconnectDelay) { [weak self] in
-            guard let self, !self.stopped else { return }
-            self.reconnectDelay = min(self.reconnectDelay * 2, 30)
-            self.connect()
+    private func shouldContinueListening(_ task: URLSessionWebSocketTask) -> Bool {
+        isRunning && task == wsTask
+    }
+
+    private func shouldHandleDisconnect(for task: URLSessionWebSocketTask) -> Bool {
+        isRunning && task == wsTask
+    }
+
+    private func scheduleReconnect() async {
+        guard isRunning, reconnectTask == nil else { return }
+
+        let delay = reconnectDelay
+        reconnectTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: sleepNanoseconds(for: delay))
+                await self.finishReconnect(after: delay)
+            } catch {}
         }
     }
 
-    private func flushBuffered() {
-        let records = buffer.drain()
-        guard !records.isEmpty else { return }
-        send(records: records) { [weak self] error in
-            guard let self else { return }
-            if let error {
-                let reason = error.localizedDescription
-                SDKLogger.warn("WebSocketTransport flushBuffered: \(error)")
-                self.connectionStateTracker.reportServerEndpointFailure(reason: reason)
-            } else {
-                self.connectionStateTracker.reportServerEndpointSuccess()
+    private func finishReconnect(after delay: TimeInterval) async {
+        reconnectTask = nil
+        guard isRunning else { return }
+
+        reconnectDelay = min(delay * 2, 30)
+        await connect()
+    }
+
+    private func lastDisconnectTimestamp() -> TimeInterval {
+        lastDisconnectLogAt
+    }
+
+    private func setLastDisconnectTimestamp(_ value: TimeInterval) {
+        lastDisconnectLogAt = value
+    }
+
+    private func sendMessage(
+        _ message: URLSessionWebSocketTask.Message,
+        on task: URLSessionWebSocketTask
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            task.send(message) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
             }
         }
     }
+
+    private func receiveMessage(on task: URLSessionWebSocketTask) async throws -> URLSessionWebSocketTask.Message {
+        try await withCheckedThrowingContinuation { continuation in
+            task.receive { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+
+    static func webSocketURL(for serverURL: URL) -> URL? {
+        guard var components = URLComponents(url: serverURL, resolvingAgainstBaseURL: true) else {
+            return nil
+        }
+
+        switch components.scheme?.lowercased() {
+        case "http":
+            components.scheme = "ws"
+        case "https":
+            components.scheme = "wss"
+        case "ws", "wss":
+            break
+        default:
+            return nil
+        }
+
+        components.path = ""
+        components.query = nil
+        components.fragment = nil
+
+        guard let baseURL = components.url else { return nil }
+        return URL(string: "/api/v1/sdk/traffic/ws", relativeTo: baseURL)
+    }
+}
+
+private func sleepNanoseconds(for duration: TimeInterval) -> UInt64 {
+    UInt64(max(0, duration) * 1_000_000_000)
 }

@@ -8,7 +8,7 @@ public struct ClientContext: Codable, Sendable {
     public var userName: String?
     public var networkType: String?
     public var tags: [String: String]?
-    public var context: [String: AnyCodable]?
+    public var context: [String: ApxyContextValue]?
 
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
@@ -24,7 +24,7 @@ public struct ClientContext: Codable, Sendable {
         userName: String? = nil,
         networkType: String? = nil,
         tags: [String: String]? = nil,
-        context: [String: AnyCodable]? = nil
+        context: [String: ApxyContextValue]? = nil
     ) {
         self.userID = userID
         self.userEmail = userEmail
@@ -35,38 +35,141 @@ public struct ClientContext: Codable, Sendable {
     }
 }
 
-// ---------------------------------------------------------------------------
-// AnyCodable — lightweight type-erased Codable for arbitrary JSON values
-// ---------------------------------------------------------------------------
-
-public struct AnyCodable: Codable, Sendable {
-    public let value: Any
-
-    public init(_ value: Any) {
-        self.value = value
-    }
+public enum ApxyContextValue: Codable, Sendable, Equatable {
+    case null
+    case bool(Bool)
+    case integer(Int)
+    case double(Double)
+    case string(String)
+    case array([ApxyContextValue])
+    case object([String: ApxyContextValue])
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if let v = try? container.decode(Bool.self) { value = v }
-        else if let v = try? container.decode(Int.self) { value = v }
-        else if let v = try? container.decode(Double.self) { value = v }
-        else if let v = try? container.decode(String.self) { value = v }
-        else if let v = try? container.decode([String: AnyCodable].self) { value = v }
-        else if let v = try? container.decode([AnyCodable].self) { value = v }
-        else { value = NSNull() }
+
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Int.self) {
+            self = .integer(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .double(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([String: ApxyContextValue].self) {
+            self = .object(value)
+        } else if let value = try? container.decode([ApxyContextValue].self) {
+            self = .array(value)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported APXY context value"
+            )
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        switch value {
-        case let v as Bool:   try container.encode(v)
-        case let v as Int:    try container.encode(v)
-        case let v as Double: try container.encode(v)
-        case let v as String: try container.encode(v)
-        case let v as [String: AnyCodable]: try container.encode(v)
-        case let v as [AnyCodable]:         try container.encode(v)
-        default: try container.encodeNil()
+
+        switch self {
+        case .null:
+            try container.encodeNil()
+        case .bool(let value):
+            try container.encode(value)
+        case .integer(let value):
+            try container.encode(value)
+        case .double(let value):
+            try container.encode(value)
+        case .string(let value):
+            try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
+        case .object(let value):
+            try container.encode(value)
         }
+    }
+
+    static func make(from value: Any) -> ApxyContextValue? {
+        switch value {
+        case is NSNull:
+            return .null
+        case let value as ApxyContextValue:
+            return value
+        case let value as Bool:
+            return .bool(value)
+        case let value as Int:
+            return .integer(value)
+        case let value as Double:
+            return .double(value)
+        case let value as Float:
+            return .double(Double(value))
+        case let value as String:
+            return .string(value)
+        case let value as NSNumber:
+            if CFGetTypeID(value) == CFBooleanGetTypeID() {
+                return .bool(value.boolValue)
+            }
+
+            let doubleValue = value.doubleValue
+            let intValue = value.intValue
+            if Double(intValue) == doubleValue {
+                return .integer(intValue)
+            }
+            return .double(doubleValue)
+        case let value as [String: Any]:
+            let converted = value.reduce(into: [String: ApxyContextValue]()) { partialResult, entry in
+                guard let nested = make(from: entry.value) else { return }
+                partialResult[entry.key] = nested
+            }
+            return converted.count == value.count ? .object(converted) : nil
+        case let value as [Any]:
+            let converted = value.compactMap(make(from:))
+            return converted.count == value.count ? .array(converted) : nil
+        default:
+            return nil
+        }
+    }
+}
+
+extension ApxyContextValue: ExpressibleByNilLiteral {
+    public init(nilLiteral: ()) {
+        self = .null
+    }
+}
+
+extension ApxyContextValue: ExpressibleByBooleanLiteral {
+    public init(booleanLiteral value: Bool) {
+        self = .bool(value)
+    }
+}
+
+extension ApxyContextValue: ExpressibleByIntegerLiteral {
+    public init(integerLiteral value: Int) {
+        self = .integer(value)
+    }
+}
+
+extension ApxyContextValue: ExpressibleByFloatLiteral {
+    public init(floatLiteral value: Double) {
+        self = .double(value)
+    }
+}
+
+extension ApxyContextValue: ExpressibleByStringLiteral {
+    public init(stringLiteral value: String) {
+        self = .string(value)
+    }
+}
+
+extension ApxyContextValue: ExpressibleByArrayLiteral {
+    public init(arrayLiteral elements: ApxyContextValue...) {
+        self = .array(elements)
+    }
+}
+
+extension ApxyContextValue: ExpressibleByDictionaryLiteral {
+    public init(dictionaryLiteral elements: (String, ApxyContextValue)...) {
+        self = .object(Dictionary(uniqueKeysWithValues: elements))
     }
 }

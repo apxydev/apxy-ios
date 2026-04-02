@@ -1,30 +1,19 @@
 import Foundation
 
-/// Batch-POST transport: collects records, flushes on a timer.
-/// Uses its own URLSession (marked internal) to avoid interception.
-final class HTTPTransport: RecordTransport, @unchecked Sendable {
+/// Batch POST transport used by the buffered delivery mode.
+actor HTTPTransport: RecordTransport {
     private let serverURL: URL
-    private let buffer: RecordBuffer
-    private let flushInterval: TimeInterval
     private let session: URLSession
     private let connectionStateTracker: ConnectionStateTracker
-    private var timer: Timer?
 
     private let encoder: JSONEncoder = {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
-        return e
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
     }()
 
-    init(
-        serverURL: URL,
-        buffer: RecordBuffer,
-        flushInterval: TimeInterval,
-        connectionStateTracker: ConnectionStateTracker
-    ) {
+    init(serverURL: URL, connectionStateTracker: ConnectionStateTracker) {
         self.serverURL = serverURL
-        self.buffer = buffer
-        self.flushInterval = flushInterval
         self.connectionStateTracker = connectionStateTracker
 
         let config = URLSessionConfiguration.default
@@ -32,62 +21,38 @@ final class HTTPTransport: RecordTransport, @unchecked Sendable {
         self.session = URLSession(configuration: config)
     }
 
-    func start() {
-        SDKLogger.debug("HTTPTransport timer started interval=\(flushInterval)s")
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.timer = Timer.scheduledTimer(
-                withTimeInterval: self.flushInterval,
-                repeats: true
-            ) { [weak self] _ in self?.flush() }
-        }
-    }
+    func start() async {}
 
-    func stop() {
-        DispatchQueue.main.async { [weak self] in self?.timer?.invalidate() }
-        flush()
-    }
+    func stop() async {}
 
-    func send(records: [NetworkRecord], completion: @escaping (Error?) -> Void) {
-        guard !records.isEmpty else { completion(nil); return }
-        guard let body = try? encoder.encode(records) else {
-            completion(SDKError.encodingFailed)
-            return
-        }
+    func send(records: [NetworkRecord]) async throws {
+        guard !records.isEmpty else { return }
+
+        let body = try encoder.encode(records)
         guard let url = URL(string: "/api/v1/sdk/traffic", relativeTo: serverURL) else {
-            completion(SDKError.invalidURL)
-            return
+            throw SDKError.invalidURL
         }
-        var req = URLRequest(url: url, timeoutInterval: 10)
-        req.httpMethod = "POST"
-        req.httpBody = body
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        session.dataTask(with: req) { [weak self] _, response, error in
-            guard let self else { return }
-            if let error {
-                let reason = error.localizedDescription
-                SDKLogger.warn("cannot reach server (HTTP flush): \(reason)")
-                self.connectionStateTracker.reportServerEndpointFailure(reason: reason)
-                completion(error)
-                return
-            }
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            let (_, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
                 let reason = "HTTP \(http.statusCode)"
                 SDKLogger.warn("cannot reach server (HTTP flush): \(reason)")
-                self.connectionStateTracker.reportServerEndpointFailure(reason: reason)
-                completion(SDKError.serverError(http.statusCode))
-                return
+                await connectionStateTracker.reportServerEndpointFailure(reason: reason)
+                throw SDKError.serverError(http.statusCode)
             }
-            completion(nil)
-            self.connectionStateTracker.reportServerEndpointSuccess()
-            SDKLogger.debug("HTTPTransport flush succeeded recordCount=\(records.count)")
-        }.resume()
-    }
 
-    private func flush() {
-        let records = buffer.drain()
-        guard !records.isEmpty else { return }
-        send(records: records) { _ in }
+            await connectionStateTracker.reportServerEndpointSuccess()
+            SDKLogger.debug("HTTPTransport flush succeeded recordCount=\(records.count)")
+        } catch {
+            SDKLogger.warn("cannot reach server (HTTP flush): \(error.localizedDescription)")
+            await connectionStateTracker.reportServerEndpointFailure(reason: error.localizedDescription)
+            throw error
+        }
     }
 }

@@ -6,8 +6,21 @@ import os.log
 enum SDKLogger {
     private static let subsystem = "dev.apxy.sdk"
     private static let log = OSLog(subsystem: subsystem, category: "ApxySDK")
+    private static let levelLock = NSLock()
+    nonisolated(unsafe) private static var levelStorage: ApxyLogLevel = .warning
 
-    static var level: ApxyLogLevel = .warning
+    static var level: ApxyLogLevel {
+        get {
+            levelLock.lock()
+            defer { levelLock.unlock() }
+            return levelStorage
+        }
+        set {
+            levelLock.lock()
+            levelStorage = newValue
+            levelLock.unlock()
+        }
+    }
 
     private static func sourceLabel(file: StaticString, line: UInt) -> String {
         let id = String(describing: file)

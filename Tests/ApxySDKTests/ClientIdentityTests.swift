@@ -1,24 +1,21 @@
-import XCTest
+import Testing
 @testable import ApxySDK
 
-final class ClientIdentityTests: XCTestCase {
-
-    func testBuildReturnsNonEmptyID() {
+struct ClientIdentityTests {
+    @Test func buildReturnsNonEmptyIdentity() {
         let client = ClientIdentity.build()
-        XCTAssertFalse(client.id.isEmpty)
-        XCTAssertFalse(client.platform.isEmpty)
-        XCTAssertFalse(client.osName.isEmpty)
+        #expect(client.id.isEmpty == false)
+        #expect(client.platform.isEmpty == false)
+        #expect(client.osName.isEmpty == false)
     }
 
-    func testDeterministicID() {
-        let a = ClientIdentity.build()
-        let b = ClientIdentity.build()
-        XCTAssertEqual(a.id, b.id, "Same device/app must produce the same client ID")
+    @Test func buildIsDeterministic() {
+        let lhs = ClientIdentity.build()
+        let rhs = ClientIdentity.build()
+        #expect(lhs.id == rhs.id)
     }
 
-    func testIDLength() {
-        let client = ClientIdentity.build()
-        // SHA256 hex digest = 64 chars
-        XCTAssertEqual(client.id.count, 64)
+    @Test func idUsesSHA256HexLength() {
+        #expect(ClientIdentity.build().id.count == 64)
     }
 }

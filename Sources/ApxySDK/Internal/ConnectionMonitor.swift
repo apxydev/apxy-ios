@@ -1,21 +1,23 @@
 import Foundation
 import Network
 
-/// Monitors network reachability using `NWPathMonitor` and reports connection
-/// status changes. Also detects WiFi vs Cellular.
-final class ConnectionMonitor: @unchecked Sendable {
+struct ConnectionSnapshot: Sendable, Equatable {
+    let isConnected: Bool
+    let networkType: String
+
+    static let unknown = ConnectionSnapshot(isConnected: false, networkType: "unknown")
+}
+
+/// Monitors network reachability using `NWPathMonitor` and reports immutable
+/// snapshots back to the SDK runtime.
+final class ConnectionMonitor {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "dev.apxy.sdk.connection-monitor")
+    private let onUpdate: @Sendable (ConnectionSnapshot) -> Void
 
-    private(set) var isConnected: Bool = false
-    private(set) var networkType: String = "unknown"
-
-    var onStatusChange: ((Bool, String) -> Void)?
-
-    init() {
-        monitor.pathUpdateHandler = { [weak self] path in
-            guard let self else { return }
-            let connected = path.status == .satisfied
+    init(onUpdate: @escaping @Sendable (ConnectionSnapshot) -> Void) {
+        self.onUpdate = onUpdate
+        monitor.pathUpdateHandler = { [onUpdate] path in
             let type: String
             if path.usesInterfaceType(.wifi) {
                 type = "wifi"
@@ -26,9 +28,13 @@ final class ConnectionMonitor: @unchecked Sendable {
             } else {
                 type = "other"
             }
-            self.isConnected = connected
-            self.networkType = type
-            self.onStatusChange?(connected, type)
+
+            onUpdate(
+                ConnectionSnapshot(
+                    isConnected: path.status == .satisfied,
+                    networkType: type
+                )
+            )
         }
     }
 

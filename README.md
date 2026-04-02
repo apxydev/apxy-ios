@@ -24,11 +24,14 @@ dependencies: [
 import ApxySDK
 
 // In AppDelegate.application(_:didFinishLaunchingWithOptions:) or App.init
+// Start before constructing your app's networking clients / URLSessions.
 // Use the LAN-facing SDK base URL from APXY startup (see below), NOT the proxy port.
 Apxy.start(serverURL: "http://192.168.1.5:8083")
 ```
 
-That's it — all URLSession traffic (including Alamofire, URLSession async/await) is now automatically captured.
+That's it — `URLSession.shared`, default sessions, ephemeral sessions, and higher-level clients built on top of them (including Alamofire and async/await APIs) are automatically captured.
+
+For custom `URLSessionConfiguration` instances, opt in explicitly by adding `ApxyURLProtocol.self` to `protocolClasses` before creating the session.
 
 ### Which port?
 
@@ -72,14 +75,23 @@ By default the SDK captures **all** URLSession hosts. To limit capture to specif
 Apxy.start(
     serverURL: "http://192.168.1.5:8083",
     options: ApxyOptions(
-        capturedDomains: ["api.myapp.com", "*.analytics.io"]
+        capturedDomains: ["api.myapp.com", "example.com", "*.analytics.io"]
     )
 )
 ```
 
 - **`nil` or empty** — same as default: capture every host.
 - **Exact host** — e.g. `api.example.com` matches only that host (comparison is case-insensitive).
+- **Bare domain does not imply subdomains** — if your app calls both `stg.example.com` and `api.stg.example.com`, list both `stg.example.com` and `*.stg.example.com`.
 - **Wildcard** — `*.example.com` matches any subdomain such as `api.example.com` or `v2.api.example.com`, but **not** the bare domain `example.com` (list `example.com` separately if you need it).
+
+## Start timing
+
+The SDK can only inject `ApxyURLProtocol` into shared/default/ephemeral `URLSession`s that are created after `Apxy.start(...)`.
+
+- Start APXY as early as possible, ideally in `App.init` or `application(_:didFinishLaunchingWithOptions:)`.
+- If your app builds singleton networking clients before that point, those pre-existing `URLSession`s will not be retrofitted and their requests may be missing from capture.
+- If your app builds custom `URLSessionConfiguration` instances, add `ApxyURLProtocol.self` to `protocolClasses` manually.
 
 ## Session Lifecycle
 
@@ -131,7 +143,7 @@ traffic_logs         — individual captured requests (unchanged)
 ## Architecture
 
 ```
-URLSession (swizzled)
+URLSession shared/default/ephemeral (swizzled)
     ↓ capture()
 RecordBuffer (ring, in-memory)
     ↓ flush (timer / ws send)

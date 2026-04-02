@@ -1,31 +1,35 @@
 import Foundation
 import ObjectiveC
 
-/// Registers `ApxyURLProtocol` with the URL loading system so **all** `URLSession`
-/// traffic is observed — including Combine (`dataTaskPublisher`), async/await
-/// (`data(for:)`), and custom `URLSession(configuration:)` instances.
+/// Registers `ApxyURLProtocol` with the URL loading system so shared/default
+/// and ephemeral URLSession configurations are intercepted automatically.
 ///
-/// `URLProtocol.registerClass` alone only affects `URLSession.shared`. Custom
-/// sessions copy `protocolClasses` from `URLSessionConfiguration` at creation
-/// time, so we swizzle `+[NSURLSessionConfiguration defaultSessionConfiguration]`
-/// and `ephemeralSessionConfiguration` to prepend `ApxyURLProtocol`.
-///
-/// SDK-internal requests are excluded via `X-Apxy-SDK-Internal` in
-/// `ApxyURLProtocol.canInit(with:)`. The internal `URLSession` used by
-/// `ApxyURLProtocol` sets `protocolClasses = []` after obtaining the default
-/// config, overriding any injection (no infinite recursion).
+/// Custom sessions with bespoke `URLSessionConfiguration` instances should opt in
+/// explicitly by adding `ApxyURLProtocol.self` to `protocolClasses`.
 enum URLSessionSwizzler {
-    private static var installed = false
+    private static let stateLock = NSLock()
+    nonisolated(unsafe) private static var installed = false
 
     private static let configClass: AnyClass = URLSessionConfiguration.self
+    private static let sessionClass: AnyClass = URLSession.self
 
     private static let defaultConfigSelector = NSSelectorFromString("defaultSessionConfiguration")
     private static let ephemeralConfigSelector = NSSelectorFromString("ephemeralSessionConfiguration")
+    private static let uploadTaskWithRequestFromDataSelector = NSSelectorFromString("uploadTaskWithRequest:fromData:")
+    private static let uploadTaskWithRequestFromDataCompletionSelector = NSSelectorFromString("uploadTaskWithRequest:fromData:completionHandler:")
+    private static let uploadTaskWithRequestFromFileSelector = NSSelectorFromString("uploadTaskWithRequest:fromFile:")
+    private static let uploadTaskWithRequestFromFileCompletionSelector = NSSelectorFromString("uploadTaskWithRequest:fromFile:completionHandler:")
 
-    private static var originalDefaultIMP: IMP?
-    private static var originalEphemeralIMP: IMP?
+    nonisolated(unsafe) private static var originalDefaultIMP: IMP?
+    nonisolated(unsafe) private static var originalEphemeralIMP: IMP?
+    nonisolated(unsafe) private static var originalUploadTaskWithRequestFromDataIMP: IMP?
+    nonisolated(unsafe) private static var originalUploadTaskWithRequestFromDataCompletionIMP: IMP?
+    nonisolated(unsafe) private static var originalUploadTaskWithRequestFromFileIMP: IMP?
+    nonisolated(unsafe) private static var originalUploadTaskWithRequestFromFileCompletionIMP: IMP?
 
     static func install() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         guard !installed else { return }
         installed = true
 
@@ -33,13 +37,16 @@ enum URLSessionSwizzler {
 
         swizzleClassMethod(selector: defaultConfigSelector, original: &originalDefaultIMP)
         swizzleClassMethod(selector: ephemeralConfigSelector, original: &originalEphemeralIMP)
+        swizzleUploadTaskFactoryMethods()
 
         SDKLogger.debug(
-            "URLSessionSwizzler installed (ApxyURLProtocol + URLSessionConfiguration factory swizzle)"
+            "URLSessionSwizzler installed (automatic shared/default/ephemeral interception)"
         )
     }
 
     static func uninstall() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         guard installed else { return }
         installed = false
 
@@ -47,11 +54,10 @@ enum URLSessionSwizzler {
 
         restoreClassMethod(selector: defaultConfigSelector, original: &originalDefaultIMP)
         restoreClassMethod(selector: ephemeralConfigSelector, original: &originalEphemeralIMP)
+        restoreUploadTaskFactoryMethods()
 
         SDKLogger.debug("URLSessionSwizzler uninstalled")
     }
-
-    // MARK: - Private
 
     private static func injectApxyProtocol(into configuration: URLSessionConfiguration) {
         var classes = configuration.protocolClasses ?? []
@@ -65,13 +71,14 @@ enum URLSessionSwizzler {
             SDKLogger.warn("URLSessionSwizzler: missing class method for \(NSStringFromSelector(selector))")
             return
         }
+
         original = method_getImplementation(method)
 
         typealias Factory = @convention(c) (AnyClass?, Selector) -> URLSessionConfiguration
-        guard let origIMP = original else { return }
+        guard let original else { return }
 
         let block: @convention(block) () -> URLSessionConfiguration = {
-            let callOriginal = unsafeBitCast(origIMP, to: Factory.self)
+            let callOriginal = unsafeBitCast(original, to: Factory.self)
             let configuration = callOriginal(configClass as AnyClass?, selector)
             injectApxyProtocol(into: configuration)
             return configuration
@@ -86,6 +93,166 @@ enum URLSessionSwizzler {
             original = nil
             return
         }
+
+        method_setImplementation(method, imp)
+        original = nil
+    }
+
+    private static func swizzleUploadTaskFactoryMethods() {
+        swizzleUploadTaskFromDataMethod(
+            selector: uploadTaskWithRequestFromDataSelector,
+            original: &originalUploadTaskWithRequestFromDataIMP
+        )
+        swizzleUploadTaskFromDataCompletionMethod(
+            selector: uploadTaskWithRequestFromDataCompletionSelector,
+            original: &originalUploadTaskWithRequestFromDataCompletionIMP
+        )
+        swizzleUploadTaskFromFileMethod(
+            selector: uploadTaskWithRequestFromFileSelector,
+            original: &originalUploadTaskWithRequestFromFileIMP
+        )
+        swizzleUploadTaskFromFileCompletionMethod(
+            selector: uploadTaskWithRequestFromFileCompletionSelector,
+            original: &originalUploadTaskWithRequestFromFileCompletionIMP
+        )
+    }
+
+    private static func restoreUploadTaskFactoryMethods() {
+        restoreUploadTaskFactoryMethod(
+            selector: uploadTaskWithRequestFromDataSelector,
+            original: &originalUploadTaskWithRequestFromDataIMP
+        )
+        restoreUploadTaskFactoryMethod(
+            selector: uploadTaskWithRequestFromDataCompletionSelector,
+            original: &originalUploadTaskWithRequestFromDataCompletionIMP
+        )
+        restoreUploadTaskFactoryMethod(
+            selector: uploadTaskWithRequestFromFileSelector,
+            original: &originalUploadTaskWithRequestFromFileIMP
+        )
+        restoreUploadTaskFactoryMethod(
+            selector: uploadTaskWithRequestFromFileCompletionSelector,
+            original: &originalUploadTaskWithRequestFromFileCompletionIMP
+        )
+    }
+
+    private static func swizzleUploadTaskFromDataMethod(selector: Selector, original: inout IMP?) {
+        guard let method = class_getInstanceMethod(sessionClass, selector) else {
+            SDKLogger.warn("URLSessionSwizzler: missing upload task method for \(NSStringFromSelector(selector))")
+            return
+        }
+
+        original = method_getImplementation(method)
+
+        typealias Factory = @convention(c) (AnyObject, Selector, NSURLRequest, NSData?) -> URLSessionUploadTask
+        guard let original else { return }
+
+        let block: @convention(block) (AnyObject, NSURLRequest, NSData?) -> URLSessionUploadTask = {
+            receiver, request, bodyData in
+            let annotatedRequest = ApxyURLProtocol.annotateUploadRequest(
+                request,
+                bodyData: bodyData as Data?,
+                source: .uploadTaskData
+            )
+            let callOriginal = unsafeBitCast(original, to: Factory.self)
+            return callOriginal(receiver, selector, annotatedRequest as NSURLRequest, bodyData)
+        }
+
+        method_setImplementation(method, imp_implementationWithBlock(block))
+    }
+
+    private static func swizzleUploadTaskFromDataCompletionMethod(selector: Selector, original: inout IMP?) {
+        guard let method = class_getInstanceMethod(sessionClass, selector) else {
+            SDKLogger.warn("URLSessionSwizzler: missing upload task method for \(NSStringFromSelector(selector))")
+            return
+        }
+
+        original = method_getImplementation(method)
+
+        typealias Factory = @convention(c) (AnyObject, Selector, NSURLRequest, NSData?, AnyObject) -> URLSessionUploadTask
+        guard let original else { return }
+
+        let block: @convention(block) (AnyObject, NSURLRequest, NSData?, AnyObject) -> URLSessionUploadTask = {
+            receiver, request, bodyData, completion in
+            let annotatedRequest = ApxyURLProtocol.annotateUploadRequest(
+                request,
+                bodyData: bodyData as Data?,
+                source: .uploadTaskData
+            )
+            let callOriginal = unsafeBitCast(original, to: Factory.self)
+            return callOriginal(receiver, selector, annotatedRequest as NSURLRequest, bodyData, completion)
+        }
+
+        method_setImplementation(method, imp_implementationWithBlock(block))
+    }
+
+    private static func swizzleUploadTaskFromFileMethod(selector: Selector, original: inout IMP?) {
+        guard let method = class_getInstanceMethod(sessionClass, selector) else {
+            SDKLogger.warn("URLSessionSwizzler: missing upload task method for \(NSStringFromSelector(selector))")
+            return
+        }
+
+        original = method_getImplementation(method)
+
+        typealias Factory = @convention(c) (AnyObject, Selector, NSURLRequest, NSURL?) -> URLSessionUploadTask
+        guard let original else { return }
+
+        let block: @convention(block) (AnyObject, NSURLRequest, NSURL?) -> URLSessionUploadTask = {
+            receiver, request, fileURL in
+            let bodyData = (fileURL as URL?) .flatMap { try? Data(contentsOf: $0) }
+            if fileURL != nil, bodyData == nil {
+                SDKLogger.warn("URLSessionSwizzler: failed reading upload file body for capture")
+            }
+
+            let annotatedRequest = ApxyURLProtocol.annotateUploadRequest(
+                request,
+                bodyData: bodyData,
+                source: .uploadTaskFile
+            )
+            let callOriginal = unsafeBitCast(original, to: Factory.self)
+            return callOriginal(receiver, selector, annotatedRequest as NSURLRequest, fileURL)
+        }
+
+        method_setImplementation(method, imp_implementationWithBlock(block))
+    }
+
+    private static func swizzleUploadTaskFromFileCompletionMethod(selector: Selector, original: inout IMP?) {
+        guard let method = class_getInstanceMethod(sessionClass, selector) else {
+            SDKLogger.warn("URLSessionSwizzler: missing upload task method for \(NSStringFromSelector(selector))")
+            return
+        }
+
+        original = method_getImplementation(method)
+
+        typealias Factory = @convention(c) (AnyObject, Selector, NSURLRequest, NSURL?, AnyObject) -> URLSessionUploadTask
+        guard let original else { return }
+
+        let block: @convention(block) (AnyObject, NSURLRequest, NSURL?, AnyObject) -> URLSessionUploadTask = {
+            receiver, request, fileURL, completion in
+            let bodyData = (fileURL as URL?) .flatMap { try? Data(contentsOf: $0) }
+            if fileURL != nil, bodyData == nil {
+                SDKLogger.warn("URLSessionSwizzler: failed reading upload file body for capture")
+            }
+
+            let annotatedRequest = ApxyURLProtocol.annotateUploadRequest(
+                request,
+                bodyData: bodyData,
+                source: .uploadTaskFile
+            )
+            let callOriginal = unsafeBitCast(original, to: Factory.self)
+            return callOriginal(receiver, selector, annotatedRequest as NSURLRequest, fileURL, completion)
+        }
+
+        method_setImplementation(method, imp_implementationWithBlock(block))
+    }
+
+    private static func restoreUploadTaskFactoryMethod(selector: Selector, original: inout IMP?) {
+        guard let imp = original else { return }
+        guard let method = class_getInstanceMethod(sessionClass, selector) else {
+            original = nil
+            return
+        }
+
         method_setImplementation(method, imp)
         original = nil
     }

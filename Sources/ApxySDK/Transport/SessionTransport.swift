@@ -1,108 +1,84 @@
 import Foundation
 
+protocol SessionTransporting: Actor, Sendable {
+    func registerClient(_ client: SDKClient) async throws
+    func createSession(id: String, clientID: String, context: ClientContext) async throws
+    func updateSessionContext(id: String, context: ClientContext) async throws
+}
+
 /// Handles low-frequency session and client registration HTTP calls.
 /// Uses its own `URLSession` (not intercepted) to avoid recursion.
-final class SessionTransport: @unchecked Sendable {
+actor SessionTransport: SessionTransporting {
     private let serverURL: URL
     private let session: URLSession
 
-    private static let iso8601: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
     private let encoder: JSONEncoder = {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .custom { date, encoder in
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             var container = encoder.singleValueContainer()
-            try container.encode(SessionTransport.iso8601.string(from: date))
+            try container.encode(formatter.string(from: date))
         }
-        return e
+        return encoder
     }()
 
     init(serverURL: URL) {
         self.serverURL = serverURL
-        // Use a dedicated session with a custom header to identify SDK traffic
-        // so the interceptor can exclude it from capture.
+
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = ["X-Apxy-SDK-Internal": "1"]
         self.session = URLSession(configuration: config)
     }
 
-    // MARK: Client registration
-
-    func registerClient(_ client: SDKClient, completion: @escaping (Error?) -> Void) {
-        guard let body = try? encoder.encode(client) else {
-            completion(SDKError.encodingFailed)
-            return
-        }
-        post(path: "/api/v1/sdk/clients", body: body, completion: completion)
+    func registerClient(_ client: SDKClient) async throws {
+        try await post(path: "/api/v1/sdk/clients", body: encoder.encode(client))
     }
-
-    // MARK: Session management
 
     func createSession(
         id: String,
         clientID: String,
-        context: ClientContext,
-        completion: @escaping (Error?) -> Void
-    ) {
+        context: ClientContext
+    ) async throws {
         struct Payload: Encodable {
             let id: String
             let sdk_client_id: String
             let user_context: ClientContext
         }
-        guard let body = try? encoder.encode(Payload(id: id, sdk_client_id: clientID, user_context: context)) else {
-            completion(SDKError.encodingFailed)
-            return
-        }
-        post(path: "/api/v1/sdk/sessions", body: body, completion: completion)
+
+        let payload = Payload(id: id, sdk_client_id: clientID, user_context: context)
+        try await post(path: "/api/v1/sdk/sessions", body: encoder.encode(payload))
     }
 
     func updateSessionContext(
         id: String,
-        context: ClientContext,
-        completion: @escaping (Error?) -> Void
-    ) {
-        guard let body = try? encoder.encode(context) else {
-            completion(SDKError.encodingFailed)
-            return
-        }
-        patch(path: "/api/v1/sdk/sessions/\(id)", body: body, completion: completion)
+        context: ClientContext
+    ) async throws {
+        try await patch(path: "/api/v1/sdk/sessions/\(id)", body: encoder.encode(context))
     }
 
-    // MARK: Helpers
-
-    private func post(path: String, body: Data, completion: @escaping (Error?) -> Void) {
-        request(method: "POST", path: path, body: body, completion: completion)
+    private func post(path: String, body: Data) async throws {
+        try await request(method: "POST", path: path, body: body)
     }
 
-    private func patch(path: String, body: Data, completion: @escaping (Error?) -> Void) {
-        request(method: "PATCH", path: path, body: body, completion: completion)
+    private func patch(path: String, body: Data) async throws {
+        try await request(method: "PATCH", path: path, body: body)
     }
 
-    private func request(method: String, path: String, body: Data, completion: @escaping (Error?) -> Void) {
+    private func request(method: String, path: String, body: Data) async throws {
         guard let url = URL(string: path, relativeTo: serverURL) else {
-            completion(SDKError.invalidURL)
-            return
+            throw SDKError.invalidURL
         }
-        var req = URLRequest(url: url, timeoutInterval: 5)
-        req.httpMethod = method
-        req.httpBody = body
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        session.dataTask(with: req) { _, response, error in
-            if let error {
-                completion(error)
-                return
-            }
-            if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
-                completion(SDKError.serverError(http.statusCode))
-                return
-            }
-            completion(nil)
-        }.resume()
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        request.httpMethod = method
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let (_, response) = try await session.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+            throw SDKError.serverError(http.statusCode)
+        }
     }
 }
 
@@ -110,12 +86,18 @@ enum SDKError: LocalizedError {
     case encodingFailed
     case invalidURL
     case serverError(Int)
+    case transportUnavailable
 
     var errorDescription: String? {
         switch self {
-        case .encodingFailed:   return "Failed to encode payload"
-        case .invalidURL:       return "Invalid server URL"
-        case .serverError(let code): return "Server returned HTTP \(code)"
+        case .encodingFailed:
+            return "Failed to encode payload"
+        case .invalidURL:
+            return "Invalid server URL"
+        case .serverError(let code):
+            return "Server returned HTTP \(code)"
+        case .transportUnavailable:
+            return "Record transport is unavailable"
         }
     }
 }

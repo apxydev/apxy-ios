@@ -1,8 +1,8 @@
 import Foundation
 
 /// Abstract transport for sending buffered `NetworkRecord`s to APXY Core.
-protocol RecordTransport: AnyObject {
-    func send(records: [NetworkRecord], completion: @escaping (Error?) -> Void)
-    func start()
-    func stop()
+protocol RecordTransport: AnyObject, Sendable {
+    func send(records: [NetworkRecord]) async throws
+    func start() async
+    func stop() async
 }

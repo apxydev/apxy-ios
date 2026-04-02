@@ -1,52 +1,64 @@
-import XCTest
+import Foundation
+import Testing
 @testable import ApxySDK
 
-final class RecordBufferTests: XCTestCase {
-
-    func testAppendAndDrain() {
+struct RecordBufferTests {
+    @Test func appendAndDrain() async throws {
         let buffer = RecordBuffer(capacity: 5)
-        let record = makeRecord(id: "r1")
-        buffer.append(record)
-        let drained = buffer.drain()
-        XCTAssertEqual(drained.count, 1)
-        XCTAssertEqual(drained[0].id, "r1")
-        XCTAssertEqual(buffer.count, 0)
+        await buffer.append(makeRecord(id: "r1"))
+
+        let drained = await buffer.drain()
+        let first = try #require(drained.first)
+
+        #expect(drained.count == 1)
+        #expect(first.id == "r1")
+        #expect(await buffer.count == 0)
     }
 
-    func testRingBufferDropsOldest() {
+    @Test func ringBufferDropsOldestRecords() async {
         let buffer = RecordBuffer(capacity: 3)
-        for i in 1...5 {
-            buffer.append(makeRecord(id: "r\(i)"))
+
+        for index in 1...5 {
+            await buffer.append(makeRecord(id: "r\(index)"))
         }
-        let drained = buffer.drain()
-        XCTAssertEqual(drained.count, 3)
-        XCTAssertEqual(drained.map(\.id), ["r3", "r4", "r5"])
+
+        let drained = await buffer.drain()
+        #expect(drained.map(\.id) == ["r3", "r4", "r5"])
     }
 
-    func testDrainIsNonDestructiveOnEmpty() {
-        let buffer = RecordBuffer(capacity: 10)
-        XCTAssertTrue(buffer.drain().isEmpty)
+    @Test func prependRestoresOlderRecordsAheadOfNewerOnes() async {
+        let buffer = RecordBuffer(capacity: 5)
+        await buffer.append(makeRecord(id: "r3"))
+        await buffer.append(makeRecord(id: "r4"))
+        await buffer.prepend([makeRecord(id: "r1"), makeRecord(id: "r2")])
+
+        #expect(await buffer.drain().map(\.id) == ["r1", "r2", "r3", "r4"])
     }
 
-    func testThreadSafety() {
-        let buffer = RecordBuffer(capacity: 1000)
-        let expectation = XCTestExpectation(description: "concurrent writes")
-        let group = DispatchGroup()
-        for i in 0..<100 {
-            group.enter()
-            DispatchQueue.global().async {
-                buffer.append(self.makeRecord(id: "r\(i)"))
-                group.leave()
+    @Test func prependStillHonorsCapacity() async {
+        let buffer = RecordBuffer(capacity: 3)
+        await buffer.append(makeRecord(id: "r4"))
+        await buffer.append(makeRecord(id: "r5"))
+        await buffer.prepend([makeRecord(id: "r1"), makeRecord(id: "r2"), makeRecord(id: "r3")])
+
+        #expect(await buffer.drain().map(\.id) == ["r3", "r4", "r5"])
+    }
+
+    @Test func concurrentWritesDoNotLoseOrDuplicateRecords() async {
+        let buffer = RecordBuffer(capacity: 1_000)
+
+        await withTaskGroup(of: Void.self) { group in
+            for index in 0..<100 {
+                group.addTask {
+                    await buffer.append(makeRecord(id: "r\(index)"))
+                }
             }
         }
-        group.notify(queue: .main) {
-            XCTAssertLessThanOrEqual(buffer.count, 1000)
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 5)
-    }
 
-    // MARK: Helpers
+        let drained = await buffer.drain()
+        #expect(drained.count == 100)
+        #expect(Set(drained.map(\.id)).count == 100)
+    }
 
     private func makeRecord(id: String) -> NetworkRecord {
         NetworkRecord(

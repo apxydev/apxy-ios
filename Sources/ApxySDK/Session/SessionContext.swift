@@ -1,21 +1,20 @@
 import Foundation
 
-/// Mutable in-memory state that tracks the current session's user/tags/context.
-/// All mutations happen on the SDK's internal serial queue — no external locking needed.
-final class SessionContext: @unchecked Sendable {
+/// In-memory state that tracks the current session's user/tags/context.
+struct SessionContext: Sendable {
     private(set) var currentUser: ApxyUser?
     private(set) var tags: [String: String] = [:]
-    private(set) var context: [String: AnyCodable] = [:]
+    private(set) var context: [String: ApxyContextValue] = [:]
 
-    func setUser(_ user: ApxyUser) {
+    mutating func setUser(_ user: ApxyUser) {
         currentUser = user
     }
 
-    func setTag(key: String, value: String) {
+    mutating func setTag(key: String, value: String) {
         tags[key] = value
     }
 
-    func setContext(key: String, value: AnyCodable) {
+    mutating func setContext(key: String, value: ApxyContextValue) {
         context[key] = value
     }
 
@@ -30,7 +29,7 @@ final class SessionContext: @unchecked Sendable {
         )
     }
 
-    func reset() {
+    mutating func reset() {
         currentUser = nil
         tags.removeAll()
         context.removeAll()
