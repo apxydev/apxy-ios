@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ApxySDK
+@testable import ApxyCore
 
 struct WebSocketTransportTests {
     @available(iOS 13.0, macOS 10.15, *)

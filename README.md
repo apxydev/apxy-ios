@@ -1,12 +1,24 @@
-# ApxySDK for iOS
+# Apxy iOS
 
-Native iOS SDK for [APXY](https://apxy.dev) — intercepts URLSession traffic and streams it directly to your local APXY instance for debugging and mocking.
+Native iOS SDK for [APXY](https://apxy.dev).
 
-## Requirements
+`ApxyCore` captures `URLSession` traffic and streams it to APXY Core. `ApxyUI` adds an embedded SwiftUI console for local inspection inside your app, using the same capture pipeline rather than a second interceptor.
 
-- iOS 14+ / macOS 12+
-- Swift 5.9+
-- APXY Core running locally
+## Modules
+
+| Module | Purpose | Platforms |
+| --- | --- | --- |
+| `ApxyCore` | Capture, session tracking, buffering, transport to APXY Core, local debug storage | iOS 14+, macOS 12+ |
+| `ApxyUI` | Embedded SwiftUI request inspector backed by `ApxyCore` | iOS 16+, macOS 13+ |
+
+## Features
+
+- Capture `URLSession.shared`, default, and ephemeral traffic automatically
+- Stream requests to APXY Core over HTTP or WebSocket
+- Preserve session context such as user, tags, and custom metadata
+- Filter capture by host
+- Keep a local debug history on disk for in-app inspection
+- Present an embedded SwiftUI network console with search, filters, detail view, and export
 
 ## Installation
 
@@ -18,58 +30,102 @@ dependencies: [
 ]
 ```
 
+Add `ApxyCore` when you only need transport to APXY Core.
+
+```swift
+.product(name: "ApxyCore", package: "apxy-ios")
+```
+
+Add `ApxyUI` when you also want the embedded SwiftUI console.
+
+```swift
+.product(name: "ApxyUI", package: "apxy-ios")
+```
+
 ## Quick Start
 
 ```swift
-import ApxySDK
+import ApxyCore
 
-// In AppDelegate.application(_:didFinishLaunchingWithOptions:) or App.init
-// Start before constructing your app's networking clients / URLSessions.
-// Use the LAN-facing SDK base URL from APXY startup (see below), NOT the proxy port.
 Apxy.start(serverURL: "http://192.168.1.5:8083")
 ```
 
-That's it — `URLSession.shared`, default sessions, ephemeral sessions, and higher-level clients built on top of them (including Alamofire and async/await APIs) are automatically captured.
+Start as early as possible, ideally in `App.init` or `application(_:didFinishLaunchingWithOptions:)`, before building networking clients.
 
-For custom `URLSessionConfiguration` instances, opt in explicitly by adding `ApxyURLProtocol.self` to `protocolClasses` before creating the session.
+That is enough to capture traffic from:
 
-### Which port?
+- `URLSession.shared`
+- default and ephemeral sessions created after `Apxy.start(...)`
+- higher-level clients built on top of those sessions, including async/await flows
 
-APXY Core exposes the SDK HTTP API on the **mobile / LAN server** (default **web port + 1**). With default proxy port **8080**, the dashboard is **8082** and the SDK base URL is **`http://<your-mac-LAN-ip>:8083`**. After `apxy proxy start`, check stderr for a line like `SDK (iOS): http://192.168.x.x:8083` and use that as `serverURL`. If you bind the dashboard to `0.0.0.0` instead of localhost, the mobile server may not start; use the dashboard port from the startup log in that case.
+## Embedded Console
 
-## User Identity
-
-```swift
-// After the user logs in
-Apxy.setUser(ApxyUser(id: "user-123", email: "dev@example.com", name: "Dev User"))
-
-// Attach tags to the session
-Apxy.setTag(key: "env", value: "staging")
-Apxy.setTag(key: "feature_flag", value: "new_checkout")
-
-// Attach arbitrary context
-Apxy.setContext(key: "subscription", value: ["plan": "pro", "trial": false])
-```
-
-## Full Configuration
+Enable local recording in `ApxyCore`, then present `ApxyUI` from your app.
 
 ```swift
+import ApxyCore
+
 Apxy.start(
     serverURL: "http://192.168.1.5:8083",
     options: ApxyOptions(
-        transport: .auto,          // .http | .webSocket | .auto
-        enableInRelease: false,    // true to allow non-DEBUG builds
-        bufferSize: 100,           // ring buffer capacity when offline
-        flushInterval: 2.0,        // HTTP batch flush interval in seconds
-        logLevel: .warning,        // .none | .warning | .debug
-        capturedDomains: nil       // optional host allowlist (see Domain filtering)
+        debugConsole: .init(
+            isEnabled: true,
+            memoryRecordLimit: 200,
+            persistedRecordLimit: 2_000
+        )
     )
 )
 ```
 
-## Domain filtering
+```swift
+import SwiftUI
+import ApxyUI
 
-By default the SDK captures **all** URLSession hosts. To limit capture to specific hosts, pass a non-empty `capturedDomains` array:
+struct DebugScreen: View {
+    var body: some View {
+        NavigationStack {
+            ApxyDebugConsoleContainer()
+        }
+    }
+}
+```
+
+If you need tighter control over presentation or dependency injection, resolve the active store from `ApxyCore` and pass it directly.
+
+```swift
+import ApxyCore
+import ApxyUI
+
+if let store = Apxy.activeDebugStore {
+    ApxyDebugConsoleView(store: store)
+}
+```
+
+`ApxyUI` does not install another network hook. It reads the same locally recorded requests already produced by `ApxyCore`.
+
+## Full Configuration
+
+```swift
+import ApxyCore
+
+Apxy.start(
+    serverURL: "http://192.168.1.5:8083",
+    options: ApxyOptions(
+        transport: .auto,
+        enableInRelease: false,
+        bufferSize: 100,
+        flushInterval: 2.0,
+        logLevel: .warning,
+        capturedDomains: nil,
+        sessionIdleTimeout: 1_800,
+        debugConsole: .disabled
+    )
+)
+```
+
+## Domain Filtering
+
+By default, `ApxyCore` captures every host reached through supported `URLSession` traffic. To limit capture:
 
 ```swift
 Apxy.start(
@@ -80,76 +136,89 @@ Apxy.start(
 )
 ```
 
-- **`nil` or empty** — same as default: capture every host.
-- **Exact host** — e.g. `api.example.com` matches only that host (comparison is case-insensitive).
-- **Bare domain does not imply subdomains** — if your app calls both `stg.example.com` and `api.stg.example.com`, list both `stg.example.com` and `*.stg.example.com`.
-- **Wildcard** — `*.example.com` matches any subdomain such as `api.example.com` or `v2.api.example.com`, but **not** the bare domain `example.com` (list `example.com` separately if you need it).
+- `nil` or empty: capture all hosts
+- exact host: `api.example.com`
+- wildcard subdomain: `*.example.com`
+- bare domain and subdomains are distinct, so list both when needed
 
-## Start timing
+## Custom URLSessionConfiguration
 
-The SDK can only inject `ApxyURLProtocol` into shared/default/ephemeral `URLSession`s that are created after `Apxy.start(...)`.
+For custom configurations, add `ApxyURLProtocol.self` before constructing the session:
 
-- Start APXY as early as possible, ideally in `App.init` or `application(_:didFinishLaunchingWithOptions:)`.
-- If your app builds singleton networking clients before that point, those pre-existing `URLSession`s will not be retrofitted and their requests may be missing from capture.
-- If your app builds custom `URLSessionConfiguration` instances, add `ApxyURLProtocol.self` to `protocolClasses` manually.
+```swift
+import ApxyCore
+
+let configuration = URLSessionConfiguration.default
+configuration.protocolClasses = [ApxyURLProtocol.self] + (configuration.protocolClasses ?? [])
+let session = URLSession(configuration: configuration)
+```
+
+`ApxyCore` can only affect sessions created after startup.
+
+## User Identity And Context
+
+```swift
+import ApxyCore
+
+Apxy.setUser(ApxyUser(id: "user-123", email: "dev@example.com", name: "Dev User"))
+Apxy.setTag(key: "env", value: "staging")
+Apxy.setTag(key: "feature_flag", value: "new_checkout")
+Apxy.setContext(key: "subscription", value: ["plan": "pro", "trial": false])
+```
 
 ## Session Lifecycle
 
-A new session is created every time the app becomes active (launch or foreground from background). Session context (user, tags, custom context) is preserved across foreground cycles until you explicitly clear it.
+A session is created when the app becomes active. The `client_id` remains stable for the installed app, while `session_id` changes across launches and long background gaps.
 
+```text
+App launch / foreground  -> new session_id
+setUser/setTag/setContext -> session patched in place
+App background            -> session pauses
+Foreground after timeout  -> new session_id
 ```
-App launch / foreground  → new session_id created
-setUser/setTag/setContext → session patched in-place
-App background / killed  → session ends
-App foreground again     → new session_id (same client_id)
-```
 
-## Troubleshooting: “The Internet connection appears to be offline”
+## Which Port?
 
-That message comes from **URLSession** (often error code **-1009**). For a **LAN** URL like `http://192.168.x.x:8083`, it usually does **not** mean Wi‑Fi is off; iOS is blocking or has no route to that host.
+APXY Core exposes the mobile SDK endpoint on the LAN-facing SDK server, typically `web port + 1`.
 
-1. **Local Network permission (iOS 14+)**  
-   Add `NSLocalNetworkUsageDescription` to your app’s **Info.plist** with a short reason (e.g. “Connect to APXY on your machine for debugging”). The first time the app talks to a private IP, the user may need to allow **Local Network** in **Settings → Your App**.
+With the default APXY proxy setup:
 
-2. **Same network**  
-   The phone/simulator must reach `192.168.50.44` (same Wi‑Fi as the machine running APXY, or correct routing). **Cellular-only** cannot reach a home LAN IP.
+- proxy: `8080`
+- dashboard: `8082`
+- SDK base URL: `http://<your-mac-lan-ip>:8083`
 
-3. **HTTP (cleartext) to a local IP**  
-   If you use `http://` (not `https://`), ensure **App Transport Security** allows local networking, e.g. `NSAppTransportSecurity` → `NSAllowsLocalNetworking` = `YES`. Without it, ATS may reject the connection.
+After `apxy proxy start`, use the SDK URL printed by APXY startup logs.
 
-4. **Server actually listening**  
-   From a Mac on the same LAN, hit the SDK base URL (see **Which port?** above), e.g. `curl -sS -o /dev/null -w "%{http_code}" -X POST http://192.168.50.44:8083/api/v1/sdk/sessions -H 'Content-Type: application/json' -d '{}'`. You should get a non-connection error (e.g. 400) if the route exists. If connection fails, fix the host/firewall/APXY process or use the port printed at startup.
+## Troubleshooting
 
-The SDK only uses `URLSession` to your `serverURL`; it cannot grant Local Network or ATS permissions for the host app.
+### "The Internet connection appears to be offline"
 
-## Graceful Fallback
+For a LAN URL such as `http://192.168.x.x:8083`, this usually means iOS blocked or could not route to the local host.
 
-- **Release builds**: Complete no-op unless `enableInRelease: true`
-- **No server URL**: SDK inactive, zero overhead
-- **Server unreachable**: Ring buffer holds up to `bufferSize` records; oldest dropped when full; auto-flush on reconnect
-- **Never blocks**: All capture and transmission happens asynchronously
-- **Never crashes**: All SDK code runs inside do/catch; errors logged to console only
+1. Add `NSLocalNetworkUsageDescription` to `Info.plist`.
+2. If you use `http://`, allow local networking in ATS, for example with `NSAppTransportSecurity` and `NSAllowsLocalNetworking = YES`.
+3. Make sure the device and Mac are on the same network.
+4. Verify the APXY SDK endpoint is reachable from another machine on the same LAN.
 
-## Data Model
+### No requests in the console
 
-```
-sdk_clients          — stable device+app identity (one row per device/app combo)
-    ↓ sdk_client_id
-traffic_sessions     — per app-foreground lifecycle, links to sdk_client
-    ↓ session_id
-traffic_logs         — individual captured requests (unchanged)
-```
+1. Call `Apxy.start(...)` before creating networking clients.
+2. Enable `debugConsole` in `ApxyOptions`.
+3. For custom session configurations, insert `ApxyURLProtocol.self`.
+4. If you present `ApxyDebugConsoleContainer()`, make sure you are on iOS 16+ or macOS 13+.
 
 ## Architecture
 
-```
-URLSession shared/default/ephemeral (swizzled)
-    ↓ capture()
-RecordBuffer (ring, in-memory)
-    ↓ flush (timer / ws send)
-HTTPTransport   or   WebSocketTransport
-    ↓
-APXY Core /api/v1/sdk/traffic (on the mobile/LAN port from startup)
+```text
+URLSession shared/default/ephemeral
+    -> capture
+    -> local debug store
+    -> HTTPTransport or WebSocketTransport
+    -> APXY Core
+
+ApxyUI
+    -> reads snapshots from the local debug store
+    -> renders list, filters, details, and export
 ```
 
 ## License

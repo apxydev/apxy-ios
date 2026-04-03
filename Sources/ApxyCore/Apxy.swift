@@ -4,14 +4,14 @@ import Foundation
 ///
 /// ## Quick start (2 lines)
 /// ```swift
-/// import ApxySDK
-/// Apxy.start(serverURL: "http://192.168.1.5:8080")
+/// import ApxyCore
+/// Apxy.start(serverURL: "http://192.168.1.5:8083")
 /// ```
 ///
 /// ## Full config
 /// ```swift
 /// Apxy.start(
-///     serverURL: "http://192.168.1.5:8080",
+///     serverURL: "http://192.168.1.5:8083",
 ///     options: ApxyOptions(transport: .auto, bufferSize: 200)
 /// )
 /// Apxy.setUser(ApxyUser(id: "user-123", email: "dev@example.com"))
@@ -25,6 +25,8 @@ public final class Apxy {
     private let sessionManager: SessionManager
     private let connectionMonitor: ConnectionMonitor
     private let capturedDomains: [String]?
+    private let capturePolicy: ApxyCapturePolicy
+    private let debugStore: ApxyDebugStore?
 #if canImport(UIKit)
     private let lifecycleObserver: AppLifecycleObserver
 #endif
@@ -71,9 +73,13 @@ public final class Apxy {
             deliveryMode = .buffered
         }
 
+        let debugStore = options.debugConsole.isEnabled ? ApxyDebugStore(options: options.debugConsole) : nil
+        self.capturePolicy = options.capturePolicy
+        self.debugStore = debugStore
         self.sessionManager = SessionManager(
             transport: sessionTransport,
             recordTransport: recordTransport,
+            debugStore: debugStore,
             connectionStateTracker: connectionStateTracker,
             bufferCapacity: options.bufferSize,
             recordDeliveryMode: deliveryMode,
@@ -93,9 +99,12 @@ public final class Apxy {
                     await sessionManager.appDidBecomeActive()
                 }
             },
-            onEnterBackground: { [sessionManager] in
+            onEnterBackground: { [sessionManager, debugStore] in
                 Task {
                     await sessionManager.appDidEnterBackground()
+                    if let debugStore {
+                        await debugStore.flush()
+                    }
                 }
             }
         )
@@ -111,13 +120,13 @@ public final class Apxy {
     public static func start(serverURL: String, options: ApxyOptions = .init()) {
 #if !DEBUG
         guard options.enableInRelease else {
-            SDKLogger.debug("ApxySDK: disabled in Release build (set enableInRelease: true to override)")
+            SDKLogger.debug("ApxyCore: disabled in Release build (set enableInRelease: true to override)")
             return
         }
 #endif
 
         guard let url = URL(string: serverURL) else {
-            SDKLogger.warn("ApxySDK: invalid serverURL '\(serverURL)' — SDK not started")
+            SDKLogger.warn("ApxyCore: invalid serverURL '\(serverURL)' — SDK not started")
             return
         }
 
@@ -167,7 +176,7 @@ public final class Apxy {
     /// Attach arbitrary JSON-like context to the current session under the given key.
     public static func setContext(key: String, value: Any) {
         guard let normalized = ApxyContextValue.make(from: value) else {
-            SDKLogger.warn("ApxySDK: unsupported context value for key '\(key)'")
+            SDKLogger.warn("ApxyCore: unsupported context value for key '\(key)'")
 #if DEBUG
             assertionFailure("Unsupported APXY context value for key '\(key)'")
 #endif
@@ -175,6 +184,11 @@ public final class Apxy {
         }
 
         setContext(key: key, value: normalized)
+    }
+
+    /// Returns the local embedded debug store when debug recording is enabled.
+    public static var activeDebugStore: ApxyDebugStore? {
+        activeInstance()?.debugStore
     }
 
     func capture(
@@ -204,9 +218,30 @@ public final class Apxy {
             return
         }
 
+        let debugContext: DebugCaptureContext?
+        if debugStore != nil {
+            let errorInfo: ApxyDebugRecord.ErrorInfo?
+            if let error {
+                let nsError = error as NSError
+                errorInfo = ApxyDebugRecord.ErrorInfo(
+                    domain: nsError.domain,
+                    code: nsError.code,
+                    message: nsError.localizedDescription
+                )
+            } else {
+                errorInfo = nil
+            }
+            debugContext = DebugCaptureContext(
+                metrics: metrics.map(ApxyDebugRecord.Metrics.init),
+                error: errorInfo
+            )
+        } else {
+            debugContext = nil
+        }
+
         let sessionManager = self.sessionManager
         Task {
-            await sessionManager.capture(payload)
+            await sessionManager.capture(payload, debugContext: debugContext)
         }
     }
 
@@ -230,6 +265,7 @@ public final class Apxy {
         } else {
             ApxyURLProtocol.domainFilter = nil
         }
+        ApxyURLProtocol.capturePolicy = capturePolicy
 
         connectionMonitor.start()
 #if canImport(UIKit)
@@ -249,14 +285,19 @@ public final class Apxy {
 #endif
         URLSessionSwizzler.uninstall()
         ApxyURLProtocol.domainFilter = nil
+        ApxyURLProtocol.capturePolicy = .performanceFirst
         connectionMonitor.stop()
         startupTask?.cancel()
         startupTask = nil
 
         let sessionManager = self.sessionManager
+        let debugStore = self.debugStore
         let semaphore = DispatchSemaphore(value: 0)
         Task {
             await sessionManager.stop()
+            if let debugStore {
+                await debugStore.flush()
+            }
             semaphore.signal()
         }
         semaphore.wait()

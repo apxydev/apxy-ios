@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ApxySDK
+@testable import ApxyCore
 
 struct ApxyURLProtocolTests {
     @Test func prepareCapturedRequestBodyUsesHTTPBodyWhenAvailable() {
@@ -19,7 +19,24 @@ struct ApxyURLProtocolTests {
         #expect(captured.data == body)
     }
 
-    @Test func prepareCapturedRequestBodyReplaysHTTPBodyStream() throws {
+    @Test func prepareCapturedRequestBodyTruncatesLargeHTTPBody() {
+        let body = Data(repeating: 0x61, count: 128)
+        var request = URLRequest(url: URL(string: "https://example.com/api")!)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        let mutableRequest = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+
+        let captured = ApxyURLProtocol.prepareCapturedRequestBody(
+            from: request,
+            forwarding: mutableRequest,
+            policy: ApxyCapturePolicy(maxRequestBodyBytes: 32)
+        )
+
+        #expect(captured.source == .httpBody)
+        #expect(captured.data?.count == 32)
+    }
+
+    @Test func prepareCapturedRequestBodySkipsHTTPBodyStreamByDefault() {
         let body = Data("{\"streamed\":true}".utf8)
         var request = URLRequest(url: URL(string: "https://example.com/api")!)
         request.httpMethod = "POST"
@@ -29,6 +46,24 @@ struct ApxyURLProtocolTests {
         let captured = ApxyURLProtocol.prepareCapturedRequestBody(
             from: request,
             forwarding: mutableRequest
+        )
+
+        #expect(captured.source == .httpBodyStreamSkipped)
+        #expect(captured.data == nil)
+        #expect(mutableRequest.httpBodyStream != nil)
+    }
+
+    @Test func prepareCapturedRequestBodyReplaysHTTPBodyStreamWhenEnabled() throws {
+        let body = Data("{\"streamed\":true}".utf8)
+        var request = URLRequest(url: URL(string: "https://example.com/api")!)
+        request.httpMethod = "POST"
+        request.httpBodyStream = InputStream(data: body)
+        let mutableRequest = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+
+        let captured = ApxyURLProtocol.prepareCapturedRequestBody(
+            from: request,
+            forwarding: mutableRequest,
+            policy: ApxyCapturePolicy(captureHTTPBodyStreams: true)
         )
         let replayedStream = try #require(mutableRequest.httpBodyStream)
 
@@ -67,5 +102,10 @@ struct ApxyURLProtocolTests {
 
         #expect(captured.source == .uploadTaskData)
         #expect(captured.data == body)
+    }
+
+    @Test func truncatedBodyReturnsNilWhenCaptureDisabled() {
+        let body = Data("payload".utf8)
+        #expect(ApxyURLProtocol.truncatedBody(from: body, maxBytes: 0) == nil)
     }
 }

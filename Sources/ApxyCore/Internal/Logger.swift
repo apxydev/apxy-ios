@@ -2,10 +2,10 @@ import Foundation
 import os.log
 
 /// SDK-internal logger that respects the configured `ApxyLogLevel`.
-/// Format: `[ApxySDK] [level] [Source:line] message`
+/// Format: `[ApxyCore] [level] [Source:line] message`
 enum SDKLogger {
     private static let subsystem = "dev.apxy.sdk"
-    private static let log = OSLog(subsystem: subsystem, category: "ApxySDK")
+    private static let log = OSLog(subsystem: subsystem, category: "ApxyCore")
     private static let levelLock = NSLock()
     nonisolated(unsafe) private static var levelStorage: ApxyLogLevel = .warning
 
@@ -30,7 +30,7 @@ enum SDKLogger {
     }
 
     private static func format(level: String, file: StaticString, line: UInt, message: String) -> String {
-        "[ApxySDK] [\(level)] [\(sourceLabel(file: file, line: line))] \(message)"
+        "[ApxyCore] [\(level)] [\(sourceLabel(file: file, line: line))] \(message)"
     }
 
     static func debug(

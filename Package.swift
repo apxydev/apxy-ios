@@ -12,22 +12,39 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "ApxySDK",
-            targets: ["ApxySDK"]
+            name: "ApxyCore",
+            targets: ["ApxyCore"]
+        ),
+        .library(
+            name: "ApxyUI",
+            targets: ["ApxyUI"]
         ),
     ],
     targets: [
         .target(
-            name: "ApxySDK",
-            path: "Sources/ApxySDK",
+            name: "ApxyCore",
+            path: "Sources/ApxyCore",
+            swiftSettings: [
+                .define("DEBUG", .when(configuration: .debug)),
+            ]
+        ),
+        .target(
+            name: "ApxyUI",
+            dependencies: ["ApxyCore"],
+            path: "Sources/ApxyUI",
             swiftSettings: [
                 .define("DEBUG", .when(configuration: .debug)),
             ]
         ),
         .testTarget(
-            name: "ApxySDKTests",
-            dependencies: ["ApxySDK"],
-            path: "Tests/ApxySDKTests"
+            name: "ApxyCoreTests",
+            dependencies: ["ApxyCore"],
+            path: "Tests/ApxyCoreTests"
+        ),
+        .testTarget(
+            name: "ApxyUITests",
+            dependencies: ["ApxyCore", "ApxyUI"],
+            path: "Tests/ApxyUITests"
         ),
     ]
 )

@@ -1,8 +1,14 @@
 import Foundation
 import Testing
-@testable import ApxySDK
+@testable import ApxyCore
 
 struct URLSessionSwizzlerTests {
+    @Test func swizzlerIsPassiveUntilInstallation() {
+        URLSessionSwizzler.uninstall()
+        #expect(URLSessionSwizzler.isInstalled == false)
+        #expect(Apxy.activeDebugStore == nil)
+    }
+
     @Test func installInjectsProtocolIntoEphemeralSession() async {
         #expect(await SwizzlerHarness.shared.ephemeralSessionContainsProtocol())
     }

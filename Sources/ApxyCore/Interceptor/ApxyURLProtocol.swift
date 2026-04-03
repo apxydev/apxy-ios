@@ -3,8 +3,10 @@ import Foundation
 enum RequestBodyCaptureSource: String {
     case httpBody
     case httpBodyStream
+    case httpBodyStreamSkipped
     case uploadTaskData
     case uploadTaskFile
+    case uploadTaskFileSkipped
     case unavailable
     case streamReadFailed
 }
@@ -28,6 +30,8 @@ public final class ApxyURLProtocol: URLProtocol, @unchecked Sendable {
 
     private static let domainFilterLock = NSLock()
     nonisolated(unsafe) private static var _domainFilter: DomainFilter?
+    private static let capturePolicyLock = NSLock()
+    nonisolated(unsafe) private static var _capturePolicy = ApxyCapturePolicy.performanceFirst
 
     /// When set, only hosts matching this filter are intercepted. Cleared when the SDK stops.
     static var domainFilter: DomainFilter? {
@@ -43,11 +47,25 @@ public final class ApxyURLProtocol: URLProtocol, @unchecked Sendable {
         }
     }
 
+    static var capturePolicy: ApxyCapturePolicy {
+        get {
+            capturePolicyLock.lock()
+            defer { capturePolicyLock.unlock() }
+            return _capturePolicy
+        }
+        set {
+            capturePolicyLock.lock()
+            defer { capturePolicyLock.unlock() }
+            _capturePolicy = newValue
+        }
+    }
+
     private var session: URLSession?
     private var dataTask: URLSessionDataTask?
     private var apxy: Apxy?
     private var startTime: Date = .init()
-    private var responseData = Data()
+    private var responseData: Data?
+    private var responseBodyLimit = 0
     private var requestBodyCapture = CapturedRequestBody(data: nil, source: .unavailable)
     private var receivedResponse: HTTPURLResponse?
     private var finalRequest: URLRequest?
@@ -61,17 +79,25 @@ public final class ApxyURLProtocol: URLProtocol, @unchecked Sendable {
 
     static func prepareCapturedRequestBody(
         from request: URLRequest,
-        forwarding mutableRequest: NSMutableURLRequest
+        forwarding mutableRequest: NSMutableURLRequest,
+        policy: ApxyCapturePolicy = .performanceFirst
     ) -> CapturedRequestBody {
         if let captured = capturedUploadBody(from: request) {
             return captured
         }
         if let body = request.httpBody {
-            return CapturedRequestBody(data: body, source: .httpBody)
+            return CapturedRequestBody(
+                data: truncatedBody(from: body, maxBytes: policy.maxRequestBodyBytes),
+                source: .httpBody
+            )
         }
 
         guard let bodyStream = request.httpBodyStream else {
             return CapturedRequestBody(data: nil, source: .unavailable)
+        }
+
+        guard policy.captureHTTPBodyStreams else {
+            return CapturedRequestBody(data: nil, source: .httpBodyStreamSkipped)
         }
 
         guard let data = readAllBytes(from: bodyStream) else {
@@ -79,7 +105,10 @@ public final class ApxyURLProtocol: URLProtocol, @unchecked Sendable {
         }
 
         mutableRequest.httpBodyStream = InputStream(data: data)
-        return CapturedRequestBody(data: data, source: .httpBodyStream)
+        return CapturedRequestBody(
+            data: truncatedBody(from: data, maxBytes: policy.maxRequestBodyBytes),
+            source: .httpBodyStream
+        )
     }
 
     static func annotateUploadRequest(
@@ -108,6 +137,10 @@ public final class ApxyURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     static func readAllBytes(from stream: InputStream) -> Data? {
+        readPrefix(from: stream, maxBytes: nil)
+    }
+
+    static func readPrefix(from stream: InputStream, maxBytes: Int?) -> Data? {
         let wasOpen = stream.streamStatus == .open || stream.streamStatus == .reading
         if !wasOpen {
             stream.open()
@@ -122,9 +155,21 @@ public final class ApxyURLProtocol: URLProtocol, @unchecked Sendable {
         let chunkSize = 16 * 1024
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
         defer { buffer.deallocate() }
+        let captureLimit = maxBytes.map { max(0, $0) }
 
         while stream.hasBytesAvailable {
-            let bytesRead = stream.read(buffer, maxLength: chunkSize)
+            let maxLength: Int
+            if let captureLimit {
+                let remaining = captureLimit - data.count
+                if remaining <= 0 {
+                    break
+                }
+                maxLength = min(chunkSize, remaining)
+            } else {
+                maxLength = chunkSize
+            }
+
+            let bytesRead = stream.read(buffer, maxLength: maxLength)
             if bytesRead < 0 {
                 return nil
             }
@@ -140,6 +185,14 @@ public final class ApxyURLProtocol: URLProtocol, @unchecked Sendable {
         }
 
         return data
+    }
+
+    static func truncatedBody(from data: Data?, maxBytes: Int) -> Data? {
+        guard let data, maxBytes > 0 else { return nil }
+        if data.count <= maxBytes {
+            return data
+        }
+        return Data(data.prefix(maxBytes))
     }
 
     // MARK: URLProtocol
@@ -167,13 +220,19 @@ public final class ApxyURLProtocol: URLProtocol, @unchecked Sendable {
     public override func startLoading() {
         guard let apxy = Apxy.activeInstance() else { return forwardWithoutCapture() }
         self.apxy = apxy
+        let capturePolicy = Self.capturePolicy
 
         let mutableRequest = Self.mutableCopy(of: request)
         URLProtocol.setProperty(true, forKey: Self.sdkInternalKey, in: mutableRequest)
-        let capturedRequestBody = Self.prepareCapturedRequestBody(from: request, forwarding: mutableRequest)
+        let capturedRequestBody = Self.prepareCapturedRequestBody(
+            from: request,
+            forwarding: mutableRequest,
+            policy: capturePolicy
+        )
         requestBodyCapture = capturedRequestBody
         startTime = Date()
-        responseData = Data()
+        responseBodyLimit = capturePolicy.maxResponseBodyBytes
+        responseData = responseBodyLimit > 0 ? Data() : nil
         receivedResponse = nil
         finalRequest = mutableRequest as URLRequest
         redirectCount = 0
@@ -234,7 +293,7 @@ extension ApxyURLProtocol: URLSessionDataDelegate, URLSessionTaskDelegate {
     }
 
     public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        responseData.append(data)
+        appendResponseData(data)
         finalRequest = dataTask.currentRequest ?? finalRequest
         client?.urlProtocol(self, didLoad: data)
     }
@@ -275,7 +334,7 @@ extension ApxyURLProtocol: URLSessionDataDelegate, URLSessionTaskDelegate {
             requestBody: requestBodyCapture.data,
             requestBodySource: requestBodyCapture.source,
             response: receivedResponse,
-            responseData: responseData.isEmpty ? nil : responseData,
+            responseData: responseData?.isEmpty == false ? responseData : nil,
             duration: duration,
             redirectCount: taskMetrics?.redirectCount ?? redirectCount,
             metrics: taskMetrics,
@@ -285,5 +344,19 @@ extension ApxyURLProtocol: URLSessionDataDelegate, URLSessionTaskDelegate {
         session.finishTasksAndInvalidate()
         self.session = nil
         dataTask = nil
+    }
+
+    private func appendResponseData(_ data: Data) {
+        guard responseBodyLimit > 0 else { return }
+        guard var responseData else { return }
+        let remaining = responseBodyLimit - responseData.count
+        guard remaining > 0 else { return }
+
+        if data.count <= remaining {
+            responseData.append(data)
+        } else {
+            responseData.append(data.prefix(remaining))
+        }
+        self.responseData = responseData
     }
 }

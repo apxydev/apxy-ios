@@ -29,7 +29,7 @@ public enum ApxyConnectionEvent: Sendable {
     case transportDisconnected(reason: String?)
 }
 
-/// Full configuration for the ApxySDK.
+/// Full configuration for ApxyCore.
 public struct ApxyOptions: Sendable {
     /// Transport strategy. Default: `.auto`.
     public var transport: ApxyTransport
@@ -51,6 +51,10 @@ public struct ApxyOptions: Sendable {
     /// transition starts a new session instead of resuming the current one.
     /// Default: 1800 seconds (30 minutes).
     public var sessionIdleTimeout: TimeInterval
+    /// In-memory debug console storage. Disabled by default.
+    public var debugConsole: ApxyDebugOptions
+    /// Bounds request/response payload capture work. Default: `.performanceFirst`.
+    public var capturePolicy: ApxyCapturePolicy
 
     public init(
         transport: ApxyTransport = .auto,
@@ -60,7 +64,9 @@ public struct ApxyOptions: Sendable {
         logLevel: ApxyLogLevel = .warning,
         onConnectionEvent: (@Sendable (ApxyConnectionEvent) -> Void)? = nil,
         capturedDomains: [String]? = nil,
-        sessionIdleTimeout: TimeInterval = 1800
+        sessionIdleTimeout: TimeInterval = 1800,
+        debugConsole: ApxyDebugOptions = .disabled,
+        capturePolicy: ApxyCapturePolicy = .performanceFirst
     ) {
         self.transport = transport
         self.enableInRelease = enableInRelease
@@ -70,5 +76,7 @@ public struct ApxyOptions: Sendable {
         self.onConnectionEvent = onConnectionEvent
         self.capturedDomains = capturedDomains
         self.sessionIdleTimeout = sessionIdleTimeout
+        self.debugConsole = debugConsole
+        self.capturePolicy = capturePolicy
     }
 }

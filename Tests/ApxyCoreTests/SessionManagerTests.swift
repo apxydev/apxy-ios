@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ApxySDK
+@testable import ApxyCore
 
 struct SessionManagerTests {
     @Test func startRegistersClientAndCreatesInitialSession() async {

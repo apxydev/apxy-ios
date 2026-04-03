@@ -1,5 +1,5 @@
 import Testing
-@testable import ApxySDK
+@testable import ApxyCore
 
 struct DomainFilterTests {
     struct Row: Sendable {

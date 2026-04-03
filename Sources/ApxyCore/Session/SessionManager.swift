@@ -106,12 +106,18 @@ struct CapturePayload: Sendable {
     }
 }
 
+struct DebugCaptureContext: Sendable {
+    let metrics: ApxyDebugRecord.Metrics?
+    let error: ApxyDebugRecord.ErrorInfo?
+}
+
 /// Actor-backed SDK runtime. Owns session lifecycle, buffered records, context,
 /// and the current connection snapshot so records and metadata are captured from
 /// one consistent state owner.
 actor SessionManager {
     private let transport: any SessionTransporting
     private let recordTransport: any RecordTransport
+    private let debugStore: ApxyDebugStore?
     private let connectionStateTracker: ConnectionStateTracker
     private let sessionIdleTimeout: TimeInterval
     private let flushInterval: TimeInterval
@@ -130,6 +136,7 @@ actor SessionManager {
     init(
         transport: any SessionTransporting,
         recordTransport: any RecordTransport,
+        debugStore: ApxyDebugStore? = nil,
         connectionStateTracker: ConnectionStateTracker,
         bufferCapacity: Int,
         recordDeliveryMode: RecordDeliveryMode,
@@ -138,6 +145,7 @@ actor SessionManager {
     ) {
         self.transport = transport
         self.recordTransport = recordTransport
+        self.debugStore = debugStore
         self.connectionStateTracker = connectionStateTracker
         self.sessionIdleTimeout = sessionIdleTimeout
         self.flushInterval = max(1, flushInterval)
@@ -239,7 +247,7 @@ actor SessionManager {
         await syncContextToActiveSession()
     }
 
-    func capture(_ payload: CapturePayload) async {
+    func capture(_ payload: CapturePayload, debugContext: DebugCaptureContext? = nil) async {
         guard isRunning else { return }
 
         let record = NetworkRecord(
@@ -282,6 +290,16 @@ actor SessionManager {
             expectedResponseBodySize: payload.expectedResponseBodySize,
             hadError: payload.hadError
         )
+
+        if let debugStore, let debugContext {
+            await debugStore.append(
+                ApxyDebugRecord.make(
+                    record: record,
+                    metrics: debugContext.metrics,
+                    error: debugContext.error
+                )
+            )
+        }
 
         await dispatch(record)
     }

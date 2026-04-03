@@ -27,6 +27,12 @@ enum URLSessionSwizzler {
     nonisolated(unsafe) private static var originalUploadTaskWithRequestFromFileIMP: IMP?
     nonisolated(unsafe) private static var originalUploadTaskWithRequestFromFileCompletionIMP: IMP?
 
+    static var isInstalled: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return installed
+    }
+
     static func install() {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -149,9 +155,10 @@ enum URLSessionSwizzler {
 
         let block: @convention(block) (AnyObject, NSURLRequest, NSData?) -> URLSessionUploadTask = {
             receiver, request, bodyData in
+            let policy = ApxyURLProtocol.capturePolicy
             let annotatedRequest = ApxyURLProtocol.annotateUploadRequest(
                 request,
-                bodyData: bodyData as Data?,
+                bodyData: ApxyURLProtocol.truncatedBody(from: bodyData as Data?, maxBytes: policy.maxRequestBodyBytes),
                 source: .uploadTaskData
             )
             let callOriginal = unsafeBitCast(original, to: Factory.self)
@@ -174,9 +181,10 @@ enum URLSessionSwizzler {
 
         let block: @convention(block) (AnyObject, NSURLRequest, NSData?, AnyObject) -> URLSessionUploadTask = {
             receiver, request, bodyData, completion in
+            let policy = ApxyURLProtocol.capturePolicy
             let annotatedRequest = ApxyURLProtocol.annotateUploadRequest(
                 request,
-                bodyData: bodyData as Data?,
+                bodyData: ApxyURLProtocol.truncatedBody(from: bodyData as Data?, maxBytes: policy.maxRequestBodyBytes),
                 source: .uploadTaskData
             )
             let callOriginal = unsafeBitCast(original, to: Factory.self)
@@ -199,15 +207,26 @@ enum URLSessionSwizzler {
 
         let block: @convention(block) (AnyObject, NSURLRequest, NSURL?) -> URLSessionUploadTask = {
             receiver, request, fileURL in
-            let bodyData = (fileURL as URL?) .flatMap { try? Data(contentsOf: $0) }
-            if fileURL != nil, bodyData == nil {
-                SDKLogger.warn("URLSessionSwizzler: failed reading upload file body for capture")
+            let policy = ApxyURLProtocol.capturePolicy
+            let source: RequestBodyCaptureSource
+            let bodyData: Data?
+            if policy.captureUploadFileBodies {
+                source = .uploadTaskFile
+                bodyData = (fileURL as URL?).flatMap {
+                    readPrefix(fromUploadFile: $0, maxBytes: policy.maxRequestBodyBytes)
+                }
+                if fileURL != nil, bodyData == nil, policy.maxRequestBodyBytes > 0 {
+                    SDKLogger.warn("URLSessionSwizzler: failed reading upload file body for capture")
+                }
+            } else {
+                source = .uploadTaskFileSkipped
+                bodyData = nil
             }
 
             let annotatedRequest = ApxyURLProtocol.annotateUploadRequest(
                 request,
                 bodyData: bodyData,
-                source: .uploadTaskFile
+                source: source
             )
             let callOriginal = unsafeBitCast(original, to: Factory.self)
             return callOriginal(receiver, selector, annotatedRequest as NSURLRequest, fileURL)
@@ -229,15 +248,26 @@ enum URLSessionSwizzler {
 
         let block: @convention(block) (AnyObject, NSURLRequest, NSURL?, AnyObject) -> URLSessionUploadTask = {
             receiver, request, fileURL, completion in
-            let bodyData = (fileURL as URL?) .flatMap { try? Data(contentsOf: $0) }
-            if fileURL != nil, bodyData == nil {
-                SDKLogger.warn("URLSessionSwizzler: failed reading upload file body for capture")
+            let policy = ApxyURLProtocol.capturePolicy
+            let source: RequestBodyCaptureSource
+            let bodyData: Data?
+            if policy.captureUploadFileBodies {
+                source = .uploadTaskFile
+                bodyData = (fileURL as URL?).flatMap {
+                    readPrefix(fromUploadFile: $0, maxBytes: policy.maxRequestBodyBytes)
+                }
+                if fileURL != nil, bodyData == nil, policy.maxRequestBodyBytes > 0 {
+                    SDKLogger.warn("URLSessionSwizzler: failed reading upload file body for capture")
+                }
+            } else {
+                source = .uploadTaskFileSkipped
+                bodyData = nil
             }
 
             let annotatedRequest = ApxyURLProtocol.annotateUploadRequest(
                 request,
                 bodyData: bodyData,
-                source: .uploadTaskFile
+                source: source
             )
             let callOriginal = unsafeBitCast(original, to: Factory.self)
             return callOriginal(receiver, selector, annotatedRequest as NSURLRequest, fileURL, completion)
@@ -255,5 +285,11 @@ enum URLSessionSwizzler {
 
         method_setImplementation(method, imp)
         original = nil
+    }
+
+    private static func readPrefix(fromUploadFile fileURL: URL, maxBytes: Int) -> Data? {
+        guard maxBytes > 0 else { return nil }
+        guard let stream = InputStream(url: fileURL) else { return nil }
+        return ApxyURLProtocol.readPrefix(from: stream, maxBytes: maxBytes)
     }
 }
