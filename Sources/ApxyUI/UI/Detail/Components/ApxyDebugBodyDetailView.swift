@@ -28,6 +28,7 @@ struct ApxyDebugBodyDetailView: View {
             }
         }
         .navigationTitle(title)
+        .modifier(ApxyDebugDetailListStyleModifier())
         .toolbar {
             if let onQuickCopy, allowsQuickCopy {
                 ToolbarItem(placement: .primaryAction) {
@@ -41,17 +42,9 @@ struct ApxyDebugBodyDetailView: View {
     private var bodyContent: some View {
         switch presentation {
         case .empty:
-            placeholder(
-                icon: "nosign",
-                title: "Empty Body",
-                message: "This request completed without a body payload."
-            )
+            placeholder(icon: "nosign", title: "Empty Body", message: "This request completed without a body payload.")
         case .unavailable:
-            placeholder(
-                icon: "exclamationmark.circle",
-                title: "Unavailable",
-                message: "The body size was recorded, but the payload itself is not available."
-            )
+            placeholder(icon: "exclamationmark.circle", title: "Unavailable", message: "The body size was recorded, but the payload itself is not available.")
         case let .text(text):
             ScrollView([.vertical, .horizontal]) {
                 Text(text)
@@ -61,11 +54,7 @@ struct ApxyDebugBodyDetailView: View {
                     .padding(.vertical, 4)
             }
         case let .binary(summary):
-            placeholder(
-                icon: "doc.fill",
-                title: "Binary Body",
-                message: "\(summary) of binary data was captured. Text preview is unavailable."
-            )
+            placeholder(icon: "doc.fill", title: "Binary Body", message: "\(summary) of binary data was captured. Text preview is unavailable.")
         }
     }
 
@@ -79,25 +68,15 @@ struct ApxyDebugBodyDetailView: View {
     }
 
     private func placeholder(icon: String, title: String, message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundStyle(.secondary)
-            Text(title)
-                .font(.headline)
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        ApxyDebugPlaceholderPanel(title: title, systemImage: icon, message: message)
+            .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+            .listRowBackground(Color.clear)
     }
 }
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Body Detail Text") {
+#Preview("Body Detail Text iOS") {
     NavigationStack {
         ApxyDebugBodyDetailView(
             title: "Response Body",
@@ -112,10 +91,30 @@ struct ApxyDebugBodyDetailView: View {
             onQuickCopy: {}
         )
     }
+    .apxyPreviewDetail(.iOS)
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Body Detail Binary Placeholder") {
+#Preview("Body Detail Text macOS") {
+    NavigationStack {
+        ApxyDebugBodyDetailView(
+            title: "Response Body",
+            contentType: "application/json",
+            size: Int64(ApxyDebugPreviewFixtures.successRecord.response?.body?.count ?? 0),
+            presentation: ApxyDebugBodyFormatter.presentation(
+                data: ApxyDebugPreviewFixtures.successRecord.response?.body,
+                contentType: ApxyDebugPreviewFixtures.successRecord.response?.contentType,
+                bodySize: ApxyDebugPreviewFixtures.successRecord.response?.bodySize
+            ),
+            quickCopyTitle: "Copy JSON",
+            onQuickCopy: {}
+        )
+    }
+    .apxyPreviewDetail(.macOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Body Detail Binary Placeholder iOS") {
     NavigationStack {
         ApxyDebugBodyDetailView(
             title: "Request Body",
@@ -126,5 +125,21 @@ struct ApxyDebugBodyDetailView: View {
             onQuickCopy: nil
         )
     }
+    .apxyPreviewDetail(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Body Detail Binary Placeholder macOS") {
+    NavigationStack {
+        ApxyDebugBodyDetailView(
+            title: "Request Body",
+            contentType: "application/octet-stream",
+            size: 2048,
+            presentation: .binary(summary: "2 KB"),
+            quickCopyTitle: nil,
+            onQuickCopy: nil
+        )
+    }
+    .apxyPreviewDetail(.macOS)
 }
 #endif

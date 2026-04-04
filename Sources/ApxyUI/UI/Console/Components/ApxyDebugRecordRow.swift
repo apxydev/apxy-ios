@@ -7,20 +7,22 @@ struct ApxyDebugRecordRow: View {
     var isHighlighted: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: statusIconName)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 20, height: 20)
-                    .background(statusColor, in: Circle())
+        VStack(alignment: .leading, spacing: ApxyDebugChrome.compactRowSpacing) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                ApxyDebugStatusDot(color: statusColor)
 
                 Text(record.request.method)
-                    .font(.caption.weight(.semibold).smallCaps())
+                    .font(.caption.smallCaps())
+                    .bold()
                     .foregroundStyle(.secondary)
 
-                Text(primaryTitle)
-                    .font(.body.weight(.medium))
+                if record.isMocked {
+                    mockBadge
+                }
+
+                Text(statusText)
+                    .font(.subheadline)
+                    .foregroundStyle(statusColor)
                     .lineLimit(1)
 
                 Spacer()
@@ -28,53 +30,42 @@ struct ApxyDebugRecordRow: View {
                 Text(ApxyDebugValueFormatters.compactTimestamp(record.capturedAt))
                     .font(.caption)
                     .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if record.isMocked {
-                    Text("MOCK")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.55), in: Capsule())
-                }
-
-                Text(statusText)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(statusColor)
-                    .lineLimit(1)
-
-                if record.redirectCount > 0 {
-                    Label("\(record.redirectCount)", systemImage: "arrow.triangle.swap")
-                        .font(.caption2.weight(.medium))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.orange.opacity(0.12), in: Capsule())
-                        .foregroundStyle(.orange)
-                }
-            }
+            Text(primaryTitle)
+                .font(.body)
+                .lineLimit(1)
 
             Text(secondaryTitle)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
-            Text(footerText)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(footerText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                if record.redirectCount > 0 {
+                    Label("\(record.redirectCount)", systemImage: "arrow.triangle.swap")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 7)
+        .padding(.horizontal, 6)
         .background(rowBackground)
-        .animation(.easeOut(duration: 0.5), value: isHighlighted)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .animation(.easeOut(duration: 0.35), value: isHighlighted)
+        .clipShape(RoundedRectangle(cornerRadius: ApxyDebugChrome.controlCornerRadius, style: .continuous))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(record.request.method) \(record.request.host)")
-        .accessibilityValue("\(statusText), \(ApxyDebugValueFormatters.duration(record.duration))")
+        .accessibilityLabel("\(record.request.method) \(record.request.host) \(record.request.path)")
+        .accessibilityValue("\(statusText), \(footerText)")
     }
 
     private var primaryTitle: String {
@@ -118,28 +109,56 @@ struct ApxyDebugRecordRow: View {
     }
 
     private var statusColor: Color { statusPresentation.color }
-    private var statusIconName: String { statusPresentation.iconName }
 
     private var rowBackground: some ShapeStyle {
         isHighlighted
-            ? AnyShapeStyle(Color.accentColor.opacity(0.16))
+            ? AnyShapeStyle(ApxyDebugChrome.selectedFill)
             : AnyShapeStyle(Color.clear)
+    }
+
+    private var mockBadge: some View {
+        Text("MOCK")
+            .font(.caption)
+            .bold()
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.secondary.opacity(0.18), in: Capsule())
+            .foregroundStyle(.secondary)
     }
 }
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Record Row Success") {
+#Preview("Record Row Success iOS") {
     ApxyDebugRecordRow(record: ApxyDebugPreviewFixtures.redirectedRecord)
         .padding()
+        .apxyPreviewRow(.iOS)
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Record Row Failure") {
+#Preview("Record Row Success macOS") {
+    ApxyDebugRecordRow(record: ApxyDebugPreviewFixtures.redirectedRecord)
+        .padding()
+        .apxyPreviewRow(.macOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Record Row Failure iOS") {
     ApxyDebugRecordRow(
         record: ApxyDebugPreviewFixtures.failedRecord,
         isHighlighted: true
     )
     .padding()
+    .apxyPreviewRow(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Record Row Failure macOS") {
+    ApxyDebugRecordRow(
+        record: ApxyDebugPreviewFixtures.failedRecord,
+        isHighlighted: true
+    )
+    .padding()
+    .apxyPreviewRow(.macOS)
 }
 #endif

@@ -65,7 +65,14 @@ private struct ApxyDebugConsoleFiltersMenuPreview: View {
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Filters Menu") {
+#Preview("Filters Menu iOS") {
     ApxyDebugConsoleFiltersMenuPreview()
+        .apxyPreviewControl(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Filters Menu macOS") {
+    ApxyDebugConsoleFiltersMenuPreview()
+        .apxyPreviewControl(.macOS)
 }
 #endif

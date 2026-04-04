@@ -81,7 +81,7 @@ If you want full manual control, you can still configure `debugConsole` explicit
 
 | Module | Platforms |
 | --- | --- |
-| `ApxyCore` | iOS 14+, macOS 12+ |
+| `ApxyCore` | iOS 15+, macOS 12+ |
 | `ApxyUI` | iOS 16+, macOS 13+ |
 
 ## License

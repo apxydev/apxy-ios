@@ -10,23 +10,21 @@ struct ApxyDebugInspectorRow: View {
     var showsChevron: Bool = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(
-                    isEnabled ? tint : Color.secondary,
-                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                )
+                .font(.body)
+                .foregroundStyle(isEnabled ? tint : .secondary)
+                .frame(width: ApxyDebugChrome.iconColumnWidth, alignment: .leading)
 
             Text(title)
+                .lineLimit(2)
                 .foregroundStyle(isEnabled ? .primary : .secondary)
 
             Spacer()
 
             if !detail.isEmpty {
                 Text(detail)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                     .lineLimit(1)
@@ -34,17 +32,18 @@ struct ApxyDebugInspectorRow: View {
 
             if showsChevron {
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.footnote.bold())
                     .foregroundStyle(.tertiary)
             }
         }
+        .padding(.vertical, 1)
         .contentShape(Rectangle())
     }
 }
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Inspector Row") {
+#Preview("Inspector Row iOS") {
     ApxyDebugInspectorRow(
         icon: "chart.xyaxis.line",
         tint: .orange,
@@ -54,5 +53,20 @@ struct ApxyDebugInspectorRow: View {
         showsChevron: true
     )
     .padding()
+    .apxyPreviewComponent(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Inspector Row macOS") {
+    ApxyDebugInspectorRow(
+        icon: "chart.xyaxis.line",
+        tint: .orange,
+        title: "Metrics Timeline",
+        detail: "1",
+        isEnabled: true,
+        showsChevron: true
+    )
+    .padding()
+    .apxyPreviewComponent(.macOS)
 }
 #endif

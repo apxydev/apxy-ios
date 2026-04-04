@@ -7,32 +7,53 @@ struct ApxyDebugPlaceholderPanel: View {
     let message: String
 
     var body: some View {
-        ApxyDebugSurfaceCard {
-            VStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 36))
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.headline)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 280)
+        Group {
+            if #available(iOS 17.0, macOS 14.0, *) {
+                ContentUnavailableView {
+                    Label(title, systemImage: systemImage)
+                } description: {
+                    Text(message)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: systemImage)
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    Text(title)
+                        .font(.headline)
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 320)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
             }
-            .frame(maxWidth: .infinity)
         }
     }
 }
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Placeholder Panel") {
+#Preview("Placeholder Panel iOS") {
     ApxyDebugPlaceholderPanel(
         title: "No Request Selected",
         systemImage: "point.3.connected.trianglepath.dotted",
         message: "Pick a request from the list to inspect headers, body, cookies, and timing."
     )
     .padding()
+    .apxyPreviewComponent(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Placeholder Panel macOS") {
+    ApxyDebugPlaceholderPanel(
+        title: "No Request Selected",
+        systemImage: "point.3.connected.trianglepath.dotted",
+        message: "Pick a request from the list to inspect headers, body, cookies, and timing."
+    )
+    .padding()
+    .apxyPreviewComponent(.macOS)
 }
 #endif

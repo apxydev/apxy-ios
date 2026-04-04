@@ -1,0 +1,534 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1B3C8DB161CAB14E086065C0 /* ApxyPreviewHostiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EC462CFE3D72863265CAED5 /* ApxyPreviewHostiOSApp.swift */; };
+		3268E3E49B924A7A737CB272 /* ApxyUI in Frameworks */ = {isa = PBXBuildFile; productRef = 72D1A446912F282741A9F199 /* ApxyUI */; };
+		556FBBD3E25EE870AFEA3CD9 /* ApxyPreviewHostBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25AE1967FB314B7A493BCC72 /* ApxyPreviewHostBootstrap.swift */; };
+		630AE7E140BD0B2711CCA3A7 /* ApxyDebugPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6EFFCAA4EA27619ACBBA2E9 /* ApxyDebugPreviewFixtures.swift */; };
+		65024192C382C751D535B2F6 /* ApxyPreviewHostRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8B52CDA29CBCD736E54011C /* ApxyPreviewHostRootView.swift */; };
+		65E5AA2847FD85CC319398C0 /* ApxyPreviewHostBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25AE1967FB314B7A493BCC72 /* ApxyPreviewHostBootstrap.swift */; };
+		6984C08EA7E736DC66532343 /* ApxyPreviewHostRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8B52CDA29CBCD736E54011C /* ApxyPreviewHostRootView.swift */; };
+		8C33E234C567EBF5D2BCEB46 /* ApxyCore in Frameworks */ = {isa = PBXBuildFile; productRef = D553E5C2C89FD60BFCE70716 /* ApxyCore */; };
+		A8BBD260B80FF67EC278C5C9 /* ApxyPreviewHostmacOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA8E0E9008DB2423608EFEB4 /* ApxyPreviewHostmacOSApp.swift */; };
+		BCAE51FAA6E50B066FB4B698 /* ApxyCore in Frameworks */ = {isa = PBXBuildFile; productRef = A26C5AA1F747BE6CFCFA9019 /* ApxyCore */; };
+		E4368EC54E615FADBB46D68A /* ApxyDebugPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6EFFCAA4EA27619ACBBA2E9 /* ApxyDebugPreviewFixtures.swift */; };
+		F57A27216AE98ACDEC42E007 /* ApxyUI in Frameworks */ = {isa = PBXBuildFile; productRef = D77A492E61A4C961C760091B /* ApxyUI */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		22763F2A2350791B1E8069F9 /* ApxyPreviewHostiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ApxyPreviewHostiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		25AE1967FB314B7A493BCC72 /* ApxyPreviewHostBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApxyPreviewHostBootstrap.swift; sourceTree = "<group>"; };
+		3EC462CFE3D72863265CAED5 /* ApxyPreviewHostiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApxyPreviewHostiOSApp.swift; sourceTree = "<group>"; };
+		90D319CEA1DEFFD778543013 /* configuration.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = configuration.md; sourceTree = "<group>"; };
+		9473D0C6FE676B3B90D49D31 /* ApxyPreviewHostmacOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ApxyPreviewHostmacOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9A71140852BEA6E376C48CEC /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
+		B8292256FB939EF46A502956 /* apxy-ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "apxy-ios"; path = .; sourceTree = SOURCE_ROOT; };
+		C6EFFCAA4EA27619ACBBA2E9 /* ApxyDebugPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApxyDebugPreviewFixtures.swift; sourceTree = "<group>"; };
+		C8B52CDA29CBCD736E54011C /* ApxyPreviewHostRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApxyPreviewHostRootView.swift; sourceTree = "<group>"; };
+		EA8E0E9008DB2423608EFEB4 /* ApxyPreviewHostmacOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApxyPreviewHostmacOSApp.swift; sourceTree = "<group>"; };
+		FF2EA0FBC62F297F4B20AF94 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		32F49547B5E3E63E99A80D8A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8C33E234C567EBF5D2BCEB46 /* ApxyCore in Frameworks */,
+				F57A27216AE98ACDEC42E007 /* ApxyUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		667E51CC779F81C994E23906 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BCAE51FAA6E50B066FB4B698 /* ApxyCore in Frameworks */,
+				3268E3E49B924A7A737CB272 /* ApxyUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		061D7AF0D8D57437F1996596 /* docs */ = {
+			isa = PBXGroup;
+			children = (
+				90D319CEA1DEFFD778543013 /* configuration.md */,
+			);
+			path = docs;
+			sourceTree = "<group>";
+		};
+		201D69109D11CA483D9242BC = {
+			isa = PBXGroup;
+			children = (
+				061D7AF0D8D57437F1996596 /* docs */,
+				E06948FA53B57AFA63A1C276 /* Packages */,
+				795833ABA5F589B70CEC5CAC /* Sources */,
+				ACCF1F9F6636E3A29507E38B /* XcodePreviewHost */,
+				9A71140852BEA6E376C48CEC /* Package.swift */,
+				FF2EA0FBC62F297F4B20AF94 /* README.md */,
+				81ACB416347F78C45BB42707 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2304A5D95A12DBD3EDC53604 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				F98A70EDF5504ED29402043B /* Preview */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		3E608A8E8077B83874498A09 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				25AE1967FB314B7A493BCC72 /* ApxyPreviewHostBootstrap.swift */,
+				C8B52CDA29CBCD736E54011C /* ApxyPreviewHostRootView.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		42951B95C5F6203D762A9E68 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				2304A5D95A12DBD3EDC53604 /* Shared */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		795833ABA5F589B70CEC5CAC /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				A140883FCF420E647CEE1C07 /* ApxyUI */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		81ACB416347F78C45BB42707 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				22763F2A2350791B1E8069F9 /* ApxyPreviewHostiOS.app */,
+				9473D0C6FE676B3B90D49D31 /* ApxyPreviewHostmacOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8A705DD99342763988D5F972 /* macOS */ = {
+			isa = PBXGroup;
+			children = (
+				EA8E0E9008DB2423608EFEB4 /* ApxyPreviewHostmacOSApp.swift */,
+			);
+			path = macOS;
+			sourceTree = "<group>";
+		};
+		8CC14F55C4A4D3CA8EF224C9 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				3EC462CFE3D72863265CAED5 /* ApxyPreviewHostiOSApp.swift */,
+			);
+			path = iOS;
+			sourceTree = "<group>";
+		};
+		A140883FCF420E647CEE1C07 /* ApxyUI */ = {
+			isa = PBXGroup;
+			children = (
+				42951B95C5F6203D762A9E68 /* UI */,
+			);
+			path = ApxyUI;
+			sourceTree = "<group>";
+		};
+		ACCF1F9F6636E3A29507E38B /* XcodePreviewHost */ = {
+			isa = PBXGroup;
+			children = (
+				8CC14F55C4A4D3CA8EF224C9 /* iOS */,
+				8A705DD99342763988D5F972 /* macOS */,
+				3E608A8E8077B83874498A09 /* Shared */,
+			);
+			path = XcodePreviewHost;
+			sourceTree = "<group>";
+		};
+		E06948FA53B57AFA63A1C276 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				B8292256FB939EF46A502956 /* apxy-ios */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		F98A70EDF5504ED29402043B /* Preview */ = {
+			isa = PBXGroup;
+			children = (
+				C6EFFCAA4EA27619ACBBA2E9 /* ApxyDebugPreviewFixtures.swift */,
+			);
+			path = Preview;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		992C12366F3F94B7CFF62D17 /* ApxyPreviewHostiOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D2B81730EBF890588486B80F /* Build configuration list for PBXNativeTarget "ApxyPreviewHostiOS" */;
+			buildPhases = (
+				656D0842F013B52E48BC88C4 /* Sources */,
+				667E51CC779F81C994E23906 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ApxyPreviewHostiOS;
+			packageProductDependencies = (
+				A26C5AA1F747BE6CFCFA9019 /* ApxyCore */,
+				72D1A446912F282741A9F199 /* ApxyUI */,
+			);
+			productName = ApxyPreviewHostiOS;
+			productReference = 22763F2A2350791B1E8069F9 /* ApxyPreviewHostiOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CCE4DEDA2FBCCAC7F269EF2F /* ApxyPreviewHostmacOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC01DCB17EA9315712CBBF3E /* Build configuration list for PBXNativeTarget "ApxyPreviewHostmacOS" */;
+			buildPhases = (
+				13135DA47B58DC9F7EDB591D /* Sources */,
+				32F49547B5E3E63E99A80D8A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ApxyPreviewHostmacOS;
+			packageProductDependencies = (
+				D553E5C2C89FD60BFCE70716 /* ApxyCore */,
+				D77A492E61A4C961C760091B /* ApxyUI */,
+			);
+			productName = ApxyPreviewHostmacOS;
+			productReference = 9473D0C6FE676B3B90D49D31 /* ApxyPreviewHostmacOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		71755B9BA03B9E8663EC1A2A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					992C12366F3F94B7CFF62D17 = {
+						ProvisioningStyle = Automatic;
+					};
+					CCE4DEDA2FBCCAC7F269EF2F = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 683A1DA8F34A1A92471CC6D5 /* Build configuration list for PBXProject "ApxyPreviewHost" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 201D69109D11CA483D9242BC;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4456439550DF6301FDAEEA56 /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 81ACB416347F78C45BB42707 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				992C12366F3F94B7CFF62D17 /* ApxyPreviewHostiOS */,
+				CCE4DEDA2FBCCAC7F269EF2F /* ApxyPreviewHostmacOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		13135DA47B58DC9F7EDB591D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				630AE7E140BD0B2711CCA3A7 /* ApxyDebugPreviewFixtures.swift in Sources */,
+				65E5AA2847FD85CC319398C0 /* ApxyPreviewHostBootstrap.swift in Sources */,
+				6984C08EA7E736DC66532343 /* ApxyPreviewHostRootView.swift in Sources */,
+				A8BBD260B80FF67EC278C5C9 /* ApxyPreviewHostmacOSApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		656D0842F013B52E48BC88C4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4368EC54E615FADBB46D68A /* ApxyDebugPreviewFixtures.swift in Sources */,
+				556FBBD3E25EE870AFEA3CD9 /* ApxyPreviewHostBootstrap.swift in Sources */,
+				65024192C382C751D535B2F6 /* ApxyPreviewHostRootView.swift in Sources */,
+				1B3C8DB161CAB14E086065C0 /* ApxyPreviewHostiOSApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3455CEBBBE16042D96665026 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.apxy.preview-host.macos";
+				PRODUCT_NAME = "Apxy Preview Host macOS";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		89E43BB25DC3EEEA373CC548 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A748E2AA186E053D48ADF016 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.apxy.preview-host.ios";
+				PRODUCT_NAME = "Apxy Preview Host iOS";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A80D97AEDC527F07488B0E4C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.apxy.preview-host.macos";
+				PRODUCT_NAME = "Apxy Preview Host macOS";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		B2CC8A068FC53A41C57AFAAF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.apxy.preview-host.ios";
+				PRODUCT_NAME = "Apxy Preview Host iOS";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		FD45F8D1E34CFE2486F09139 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		683A1DA8F34A1A92471CC6D5 /* Build configuration list for PBXProject "ApxyPreviewHost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				89E43BB25DC3EEEA373CC548 /* Debug */,
+				FD45F8D1E34CFE2486F09139 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BC01DCB17EA9315712CBBF3E /* Build configuration list for PBXNativeTarget "ApxyPreviewHostmacOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A80D97AEDC527F07488B0E4C /* Debug */,
+				3455CEBBBE16042D96665026 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D2B81730EBF890588486B80F /* Build configuration list for PBXNativeTarget "ApxyPreviewHostiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B2CC8A068FC53A41C57AFAAF /* Debug */,
+				A748E2AA186E053D48ADF016 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		4456439550DF6301FDAEEA56 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		72D1A446912F282741A9F199 /* ApxyUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ApxyUI;
+		};
+		A26C5AA1F747BE6CFCFA9019 /* ApxyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ApxyCore;
+		};
+		D553E5C2C89FD60BFCE70716 /* ApxyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ApxyCore;
+		};
+		D77A492E61A4C961C760091B /* ApxyUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ApxyUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 71755B9BA03B9E8663EC1A2A /* Project object */;
+}

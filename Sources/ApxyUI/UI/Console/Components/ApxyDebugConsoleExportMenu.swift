@@ -21,11 +21,22 @@ struct ApxyDebugConsoleExportMenu: View {
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Export Menu") {
+#Preview("Export Menu iOS") {
     ApxyDebugConsoleExportMenu(
         exportURL: ApxyDebugPreviewFixtures.exportURL,
         onPrepareExport: {}
     )
     .padding()
+    .apxyPreviewControl(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Export Menu macOS") {
+    ApxyDebugConsoleExportMenu(
+        exportURL: ApxyDebugPreviewFixtures.exportURL,
+        onPrepareExport: {}
+    )
+    .padding()
+    .apxyPreviewControl(.macOS)
 }
 #endif

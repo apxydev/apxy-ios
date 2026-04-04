@@ -9,11 +9,11 @@ struct ApxyDebugToastView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
             Text(message)
-                .font(.subheadline.weight(.medium))
+                .font(.subheadline.bold())
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(.thinMaterial, in: Capsule())
         .shadow(color: .black.opacity(0.1), radius: 10, y: 5)
         .accessibilityAddTraits(.isStaticText)
     }
@@ -21,11 +21,22 @@ struct ApxyDebugToastView: View {
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Toast") {
+#Preview("Toast iOS") {
     ZStack {
         Color.clear
         ApxyDebugToastView(message: "cURL copied")
     }
     .padding()
+    .apxyPreviewComponent(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Toast macOS") {
+    ZStack {
+        Color.clear
+        ApxyDebugToastView(message: "cURL copied")
+    }
+    .padding()
+    .apxyPreviewComponent(.macOS)
 }
 #endif

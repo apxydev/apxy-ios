@@ -1,0 +1,88 @@
+name: ApxyPreviewHost
+
+options:
+  minimumXcodeGenVersion: 2.45.3
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+fileGroups:
+  - Package.swift
+  - README.md
+  - docs
+
+packages:
+  ApxyPackage:
+    path: .
+
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+
+targets:
+  ApxyPreviewHostiOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: XcodePreviewHost/Shared
+      - path: XcodePreviewHost/iOS
+      - path: Sources/ApxyUI/UI/Shared/Preview/ApxyDebugPreviewFixtures.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.apxy.preview-host.ios
+        PRODUCT_NAME: Apxy Preview Host iOS
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - package: ApxyPackage
+        product: ApxyCore
+      - package: ApxyPackage
+        product: ApxyUI
+
+  ApxyPreviewHostmacOS:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: XcodePreviewHost/Shared
+      - path: XcodePreviewHost/macOS
+      - path: Sources/ApxyUI/UI/Shared/Preview/ApxyDebugPreviewFixtures.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.apxy.preview-host.macos
+        PRODUCT_NAME: Apxy Preview Host macOS
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - package: ApxyPackage
+        product: ApxyCore
+      - package: ApxyPackage
+        product: ApxyUI
+
+schemes:
+  ApxyPreviewHostiOS:
+    build:
+      targets:
+        ApxyPreviewHostiOS: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+  ApxyPreviewHostmacOS:
+    build:
+      targets:
+        ApxyPreviewHostmacOS: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+    profile:
+      config: Release
+    analyze:
+      config: Debug

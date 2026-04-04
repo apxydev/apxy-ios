@@ -11,16 +11,21 @@ struct ApxyDebugTextDetailView: View {
             if text.isEmpty {
                 emptyContent
             } else {
-                ScrollView([.vertical, .horizontal]) {
-                    Text(text)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                List {
+                    Section {
+                        ScrollView([.vertical, .horizontal]) {
+                            Text(text)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 4)
+                        }
+                    }
                 }
             }
         }
         .navigationTitle(title)
+        .modifier(ApxyDebugDetailListStyleModifier())
         .toolbar {
             if !text.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
@@ -37,19 +42,15 @@ struct ApxyDebugTextDetailView: View {
         if #available(iOS 17.0, macOS 14.0, *) {
             ContentUnavailableView(emptyMessage, systemImage: "doc.text")
         } else {
-            List {
-                Section {
-                    Text(emptyMessage)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            ApxyDebugPlaceholderPanel(title: title, systemImage: "doc.text", message: emptyMessage)
+                .padding()
         }
     }
 }
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Text Detail") {
+#Preview("Text Detail iOS") {
     NavigationStack {
         ApxyDebugTextDetailView(
             title: "Response Headers",
@@ -61,10 +62,27 @@ struct ApxyDebugTextDetailView: View {
             emptyMessage: "No text available"
         )
     }
+    .apxyPreviewDetail(.iOS)
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Text Detail Empty") {
+#Preview("Text Detail macOS") {
+    NavigationStack {
+        ApxyDebugTextDetailView(
+            title: "Response Headers",
+            text: """
+            Content-Type: application/json
+            X-Request-ID: req-success
+            X-Preview: true
+            """,
+            emptyMessage: "No text available"
+        )
+    }
+    .apxyPreviewDetail(.macOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Text Detail Empty iOS") {
     NavigationStack {
         ApxyDebugTextDetailView(
             title: "Error Details",
@@ -72,5 +90,18 @@ struct ApxyDebugTextDetailView: View {
             emptyMessage: "No error details were captured."
         )
     }
+    .apxyPreviewDetail(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Text Detail Empty macOS") {
+    NavigationStack {
+        ApxyDebugTextDetailView(
+            title: "Error Details",
+            text: "",
+            emptyMessage: "No error details were captured."
+        )
+    }
+    .apxyPreviewDetail(.macOS)
 }
 #endif
