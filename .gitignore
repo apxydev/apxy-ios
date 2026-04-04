@@ -1,4 +1,10 @@
 .build/
+.build-ralph/
 .swiftpm/
+.omx/
+.omx-*/
+tmp/
+CLAUDE.local.md
+.claude/settings.local.json
 .DS_Store
 *.xcodeproj/xcuserdata/

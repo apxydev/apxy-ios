@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import ApxyCore
 
+@Suite(.serialized)
 struct URLSessionSwizzlerTests {
     @Test func swizzlerIsPassiveUntilInstallation() {
         URLSessionSwizzler.uninstall()

@@ -19,4 +19,36 @@ struct WebSocketTransportTests {
     @Test func webSocketURLRejectsUnsupportedSchemes() {
         #expect(WebSocketTransport.webSocketURL(for: URL(string: "ftp://apxy.dev")!) == nil)
     }
+
+    @Test func reconnectPolicyBacksOffAndEntersCooldown() {
+        var policy = WebSocketReconnectPolicy(
+            initialDelay: 1,
+            maxDelay: 30,
+            maxAttempts: 3,
+            cooldown: 60
+        )
+
+        #expect(policy.nextDecision(now: 0) == .schedule(1))
+        #expect(policy.nextDecision(now: 1) == .schedule(2))
+        #expect(policy.nextDecision(now: 2) == .schedule(4))
+        #expect(policy.nextDecision(now: 3) == .cooldown(60))
+        #expect(policy.nextDecision(now: 10) == .cooldown(53))
+        #expect(policy.nextDecision(now: 63) == .schedule(1))
+    }
+
+    @Test func reconnectPolicyResetsAfterHealthySend() {
+        var policy = WebSocketReconnectPolicy(
+            initialDelay: 1,
+            maxDelay: 30,
+            maxAttempts: 5,
+            cooldown: 60
+        )
+
+        #expect(policy.nextDecision(now: 0) == .schedule(1))
+        #expect(policy.nextDecision(now: 1) == .schedule(2))
+
+        policy.markHealthy()
+
+        #expect(policy.nextDecision(now: 2) == .schedule(1))
+    }
 }

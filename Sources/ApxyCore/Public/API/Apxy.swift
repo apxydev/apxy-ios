@@ -1,0 +1,407 @@
+import Foundation
+
+/// APXY iOS SDK — captures URLSession traffic and streams it to a local APXY instance.
+///
+/// ## Quick start (local-only)
+/// ```swift
+/// import ApxyCore
+/// Apxy.start()
+/// ```
+///
+/// ## Send traffic to desktop APXY
+/// ```swift
+/// Apxy.start(serverURL: "http://192.168.1.5:8083")
+/// ```
+///
+/// ## Full config
+/// ```swift
+/// Apxy.start(
+///     options: ApxyOptions(debugConsole: .init(isEnabled: true))
+/// )
+/// Apxy.setUser(ApxyUser(id: "user-123", email: "dev@example.com"))
+/// Apxy.setTag(key: "env", value: "staging")
+/// Apxy.setContext(key: "subscription", value: ["plan": "pro"])
+/// ```
+public final class Apxy {
+    private static let sharedLock = NSLock()
+    nonisolated(unsafe) private static var shared: Apxy?
+
+    private let sessionManager: SessionManager
+    private let connectionMonitor: ConnectionMonitor
+    private let capturedDomains: [String]?
+    private let capturePolicy: ApxyCapturePolicy
+    private let debugStore: ApxyDebugStore?
+#if canImport(UIKit)
+    private let lifecycleObserver: AppLifecycleObserver
+#endif
+    private var startupTask: Task<Void, Never>?
+
+    private init(serverURL: URL?, options: ApxyOptions) {
+        let onEvent = options.onConnectionEvent
+        let connectionStateTracker = ConnectionStateTracker { event in
+            guard let onEvent else { return }
+            Task { @MainActor in
+                onEvent(event)
+            }
+        }
+
+        let recordTransport: any RecordTransport
+        let sessionTransport: any SessionTransporting
+        let deliveryMode: RecordDeliveryMode
+
+        if let serverURL {
+            sessionTransport = SessionTransport(serverURL: serverURL)
+
+            let useWebSocket: Bool
+            switch options.transport {
+            case .webSocket:
+                useWebSocket = true
+            case .http:
+                useWebSocket = false
+            case .auto:
+                if #available(iOS 13.0, macOS 10.15, *) {
+                    useWebSocket = true
+                } else {
+                    useWebSocket = false
+                }
+            }
+
+            if useWebSocket, #available(iOS 13.0, macOS 10.15, *) {
+                recordTransport = WebSocketTransport(
+                    serverURL: serverURL,
+                    connectionStateTracker: connectionStateTracker,
+                    reconnectPolicy: WebSocketReconnectPolicy(
+                        maxAttempts: options.webSocketMaxReconnectAttempts,
+                        cooldown: options.webSocketReconnectCooldown
+                    )
+                )
+                deliveryMode = .immediate
+            } else {
+                recordTransport = HTTPTransport(
+                    serverURL: serverURL,
+                    connectionStateTracker: connectionStateTracker
+                )
+                deliveryMode = .buffered
+            }
+        } else {
+            sessionTransport = LocalOnlySessionTransport()
+            recordTransport = LocalOnlyRecordTransport()
+            deliveryMode = .buffered
+        }
+
+        let debugStore = options.debugConsole.isEnabled ? ApxyDebugStore(options: options.debugConsole) : nil
+        self.capturePolicy = options.capturePolicy
+        self.debugStore = debugStore
+        self.sessionManager = SessionManager(
+            transport: sessionTransport,
+            recordTransport: recordTransport,
+            debugStore: debugStore,
+            connectionStateTracker: connectionStateTracker,
+            bufferCapacity: options.bufferSize,
+            recordDeliveryMode: deliveryMode,
+            flushInterval: options.flushInterval,
+            sessionIdleTimeout: options.sessionIdleTimeout
+        )
+        self.connectionMonitor = ConnectionMonitor { [sessionManager] snapshot in
+            Task {
+                await sessionManager.updateConnection(snapshot)
+            }
+        }
+        self.capturedDomains = options.capturedDomains
+#if canImport(UIKit)
+        self.lifecycleObserver = AppLifecycleObserver(
+            onBecomeActive: { [sessionManager] in
+                Task {
+                    await sessionManager.appDidBecomeActive()
+                }
+            },
+            onEnterBackground: { [sessionManager, debugStore] in
+                Task {
+                    await sessionManager.appDidEnterBackground()
+                    if let debugStore {
+                        await debugStore.flush()
+                    }
+                }
+            }
+        )
+#endif
+
+        let transportLabel: String
+        if serverURL == nil {
+            transportLabel = "local-only"
+        } else {
+            transportLabel = (deliveryMode == .immediate) ? "webSocket" : "http"
+        }
+        SDKLogger.debug(
+            "started transport=\(transportLabel) bufferSize=\(options.bufferSize) flushInterval=\(options.flushInterval)"
+        )
+    }
+
+    /// Start the SDK in local-only mode. This convenience entry point enables the
+    /// embedded debug console by default so `ApxyUI` can inspect captured traffic
+    /// without extra configuration.
+    public static func start(options: ApxyOptions = .init()) {
+        var options = options
+        if !options.debugConsole.isEnabled {
+            options.debugConsole = .init(isEnabled: true)
+        }
+
+#if !DEBUG
+        guard options.enableInRelease else {
+            SDKLogger.debug("ApxyCore: disabled in Release build (set enableInRelease: true to override)")
+            return
+        }
+#endif
+
+        SDKLogger.level = options.logLevel
+
+        let instance = Apxy(serverURL: nil, options: options)
+        sharedLock.lock()
+        defer { sharedLock.unlock() }
+        guard shared == nil else { return }
+        shared = instance
+        instance.activate()
+    }
+
+    /// Start the SDK. Safe to call multiple times — subsequent calls are no-ops.
+    public static func start(serverURL: String, options: ApxyOptions = .init()) {
+#if !DEBUG
+        guard options.enableInRelease else {
+            SDKLogger.debug("ApxyCore: disabled in Release build (set enableInRelease: true to override)")
+            return
+        }
+#endif
+
+        guard let url = URL(string: serverURL) else {
+            SDKLogger.warn("ApxyCore: invalid serverURL '\(serverURL)' — SDK not started")
+            return
+        }
+
+        SDKLogger.level = options.logLevel
+
+        let instance = Apxy(serverURL: url, options: options)
+        sharedLock.lock()
+        defer { sharedLock.unlock() }
+        guard shared == nil else { return }
+        shared = instance
+        instance.activate()
+    }
+
+    /// Stop the SDK, flush remaining records, and release all resources.
+    public static func stop() {
+        let instance = detachShared()
+        guard let instance else { return }
+
+        instance.shutdown()
+        SDKLogger.debug("stop: SDK stopped")
+    }
+
+    /// Set the current authenticated user. Updates the session context immediately.
+    public static func setUser(_ user: ApxyUser) {
+        guard let instance = activeInstance() else { return }
+        Task {
+            await instance.sessionManager.setUser(user)
+        }
+    }
+
+    /// Attach a key-value tag to the current session.
+    public static func setTag(key: String, value: String) {
+        guard let instance = activeInstance() else { return }
+        Task {
+            await instance.sessionManager.setTag(key: key, value: value)
+        }
+    }
+
+    /// Attach a typed context value to the current session under the given key.
+    public static func setContext(key: String, value: ApxyContextValue) {
+        guard let instance = activeInstance() else { return }
+        Task {
+            await instance.sessionManager.setContext(key: key, value: value)
+        }
+    }
+
+    /// Attach arbitrary JSON-like context to the current session under the given key.
+    public static func setContext(key: String, value: Any) {
+        guard let normalized = ApxyContextValue.make(from: value) else {
+            SDKLogger.warn("ApxyCore: unsupported context value for key '\(key)'")
+#if DEBUG
+            assertionFailure("Unsupported APXY context value for key '\(key)'")
+#endif
+            return
+        }
+
+        setContext(key: key, value: normalized)
+    }
+
+    /// Returns the local embedded debug store when debug recording is enabled.
+    public static var activeDebugStore: ApxyDebugStore? {
+        activeInstance()?.debugStore
+    }
+
+    func capture(
+        request: URLRequest,
+        currentRequest: URLRequest,
+        requestBody: Data?,
+        requestBodySource: RequestBodyCaptureSource,
+        response: HTTPURLResponse?,
+        responseData: Data?,
+        duration: Int64,
+        redirectCount: Int,
+        metrics: URLSessionTaskMetrics?,
+        error: Error?
+    ) {
+        guard let payload = CapturePayload.make(
+            request: request,
+            currentRequest: currentRequest,
+            requestBody: requestBody,
+            requestBodySource: requestBodySource,
+            response: response,
+            responseData: responseData,
+            duration: duration,
+            redirectCount: redirectCount,
+            metrics: metrics,
+            error: error
+        ) else {
+            return
+        }
+
+        let debugContext: DebugCaptureContext?
+        if debugStore != nil {
+            let errorInfo: ApxyDebugRecord.ErrorInfo?
+            if let error {
+                let nsError = error as NSError
+                errorInfo = ApxyDebugRecord.ErrorInfo(
+                    domain: nsError.domain,
+                    code: nsError.code,
+                    message: nsError.localizedDescription
+                )
+            } else {
+                errorInfo = nil
+            }
+            debugContext = DebugCaptureContext(
+                metrics: metrics.map(ApxyDebugRecord.Metrics.init),
+                error: errorInfo
+            )
+        } else {
+            debugContext = nil
+        }
+
+        let sessionManager = self.sessionManager
+        Task {
+            await sessionManager.capture(payload, debugContext: debugContext)
+        }
+    }
+
+    static func activeInstance() -> Apxy? {
+        sharedLock.lock()
+        defer { sharedLock.unlock() }
+        return shared
+    }
+
+    private static func detachShared() -> Apxy? {
+        sharedLock.lock()
+        defer { sharedLock.unlock() }
+        let instance = shared
+        shared = nil
+        return instance
+    }
+
+    private func activate() {
+        if let capturedDomains, !capturedDomains.isEmpty {
+            ApxyURLProtocol.domainFilter = DomainFilter(domains: capturedDomains)
+        } else {
+            ApxyURLProtocol.domainFilter = nil
+        }
+        ApxyURLProtocol.capturePolicy = capturePolicy
+
+        connectionMonitor.start()
+#if canImport(UIKit)
+        lifecycleObserver.start()
+#endif
+        URLSessionSwizzler.install()
+        let sessionManager = self.sessionManager
+        startupTask = Task {
+            await sessionManager.start()
+        }
+        SDKLogger.debug("traffic interception active")
+    }
+
+    private func shutdown() {
+#if canImport(UIKit)
+        lifecycleObserver.stop()
+#endif
+        URLSessionSwizzler.uninstall()
+        ApxyURLProtocol.domainFilter = nil
+        ApxyURLProtocol.capturePolicy = .performanceFirst
+        connectionMonitor.stop()
+        startupTask?.cancel()
+        startupTask = nil
+
+        let sessionManager = self.sessionManager
+        let debugStore = self.debugStore
+        let semaphore = DispatchSemaphore(value: 0)
+        Task {
+            await sessionManager.stop()
+            if let debugStore {
+                await debugStore.flush()
+            }
+            semaphore.signal()
+        }
+        semaphore.wait()
+    }
+}
+
+#if canImport(UIKit)
+import UIKit
+
+private final class AppLifecycleObserver {
+    private let onBecomeActive: @Sendable () -> Void
+    private let onEnterBackground: @Sendable () -> Void
+    private var didBecomeActiveObserver: NSObjectProtocol?
+    private var didEnterBackgroundObserver: NSObjectProtocol?
+
+    init(
+        onBecomeActive: @escaping @Sendable () -> Void,
+        onEnterBackground: @escaping @Sendable () -> Void
+    ) {
+        self.onBecomeActive = onBecomeActive
+        self.onEnterBackground = onEnterBackground
+    }
+
+    func start() {
+        guard didBecomeActiveObserver == nil, didEnterBackgroundObserver == nil else { return }
+
+        didBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: nil
+        ) { [onBecomeActive] _ in
+            onBecomeActive()
+        }
+
+        didEnterBackgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: nil
+        ) { [onEnterBackground] _ in
+            onEnterBackground()
+        }
+    }
+
+    func stop() {
+        if let didBecomeActiveObserver {
+            NotificationCenter.default.removeObserver(didBecomeActiveObserver)
+            self.didBecomeActiveObserver = nil
+        }
+
+        if let didEnterBackgroundObserver {
+            NotificationCenter.default.removeObserver(didEnterBackgroundObserver)
+            self.didEnterBackgroundObserver = nil
+        }
+    }
+
+    deinit {
+        stop()
+    }
+}
+#endif
