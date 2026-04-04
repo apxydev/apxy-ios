@@ -14,48 +14,45 @@ struct ApxyDebugRecordHeaderCard: View {
     let url: String
 
     var body: some View {
-        ApxyDebugSurfaceCard(style: .material, topAccent: statusColor) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 8) {
-                            capsuleLabel(method, tint: .accentColor)
-                            if isMocked {
-                                capsuleLabel("Mock", tint: .secondary)
-                            }
-                            if isTLS {
-                                capsuleLabel("TLS", tint: .green)
-                            }
-                        }
+        ApxyDebugSurfaceCard(style: .plain) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    ApxyDebugStatusDot(color: statusColor)
 
-                        Text(host)
-                            .font(.headline.weight(.semibold))
-                            .lineLimit(2)
-
-                        Text(path)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
+                    Label(statusText, systemImage: statusSymbol)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .labelStyle(.titleAndIcon)
 
                     Spacer(minLength: 12)
 
-                    VStack(alignment: .trailing, spacing: 8) {
-                        Label(statusText, systemImage: statusSymbol)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(statusColor, in: Capsule())
-
-                        Text(durationText)
-                            .font(.caption.weight(.medium))
-                            .monospacedDigit()
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.secondary.opacity(0.1), in: Capsule())
-                    }
+                    Text(durationText)
+                        .font(.system(.caption, design: .monospaced).monospacedDigit())
+                        .foregroundStyle(.secondary)
                 }
+
+                HStack(spacing: 8) {
+                    capsuleLabel(method, tint: .accentColor)
+                    if isMocked {
+                        capsuleLabel("Mock", tint: .secondary)
+                    }
+                    if isTLS {
+                        capsuleLabel("TLS", tint: .green)
+                    }
+                    Spacer()
+                }
+
+                Text(host)
+                    .font(.title3.bold())
+                    .lineLimit(2)
+
+                Text(path)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+
+                Divider()
+                    .overlay(ApxyDebugChrome.subtleStroke)
 
                 Text(url)
                     .font(.system(.caption, design: .monospaced))
@@ -67,18 +64,17 @@ struct ApxyDebugRecordHeaderCard: View {
 
     private func capsuleLabel(_ title: String, tint: Color) -> some View {
         Text(title)
-            .font(.caption.weight(.semibold))
+            .font(.caption.bold())
             .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(tint.opacity(0.14))
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.14), in: Capsule())
             .foregroundStyle(tint)
-            .clipShape(Capsule())
     }
 }
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Record Header Card") {
+#Preview("Record Header Card iOS") {
     let record = ApxyDebugPreviewFixtures.failedRecord
     let presentation = ApxyDebugStatusPresentation.from(record: record)
 
@@ -95,5 +91,27 @@ struct ApxyDebugRecordHeaderCard: View {
         url: record.request.currentURL ?? record.request.url
     )
     .padding()
+    .apxyPreviewComponent(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Record Header Card macOS") {
+    let record = ApxyDebugPreviewFixtures.failedRecord
+    let presentation = ApxyDebugStatusPresentation.from(record: record)
+
+    return ApxyDebugRecordHeaderCard(
+        method: record.request.method,
+        isMocked: record.isMocked,
+        isTLS: record.isTLS,
+        host: record.request.currentHost ?? record.request.host,
+        path: record.request.currentPath ?? record.request.path,
+        statusText: record.response.map { "\($0.statusCode)" } ?? "Pending",
+        statusSymbol: presentation.iconName,
+        statusColor: presentation.color,
+        durationText: ApxyDebugValueFormatters.duration(record.duration),
+        url: record.request.currentURL ?? record.request.url
+    )
+    .padding()
+    .apxyPreviewComponent(.macOS)
 }
 #endif

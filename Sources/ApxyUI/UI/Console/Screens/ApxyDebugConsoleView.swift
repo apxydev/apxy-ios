@@ -79,18 +79,34 @@ public struct ApxyDebugConsoleContainer: View {
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Console Screen") {
+#Preview("Console Screen iOS") {
     ApxyDebugPreviewStoreContainer { store in
         ApxyDebugConsoleView(store: store)
     }
-    .frame(minWidth: 960, minHeight: 680)
+    .apxyPreviewScreen(.iOS)
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Console Container Disabled") {
+#Preview("Console Screen macOS") {
+    ApxyDebugPreviewStoreContainer { store in
+        ApxyDebugConsoleView(store: store)
+    }
+    .apxyPreviewScreen(.macOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Console Container Disabled iOS") {
     NavigationStack {
         ApxyDebugConsoleContainer()
     }
-    .frame(minWidth: 480, minHeight: 320)
+    .apxyPreviewCompactScreen(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Console Container Disabled macOS") {
+    NavigationStack {
+        ApxyDebugConsoleContainer()
+    }
+    .apxyPreviewCompactScreen(.macOS)
 }
 #endif

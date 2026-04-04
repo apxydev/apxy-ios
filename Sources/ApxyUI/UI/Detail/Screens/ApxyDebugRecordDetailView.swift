@@ -6,13 +6,14 @@ struct ApxyDebugRecordDetailView: View {
     let record: ApxyDebugRecord
 
     @State private var toastMessage: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         List {
             Section {
                 headerCard
             }
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 8, trailing: 0))
             .listRowBackground(Color.clear)
 
             Section("Summary") {
@@ -207,14 +208,17 @@ struct ApxyDebugRecordDetailView: View {
         }
         .modifier(ApxyDebugDetailListStyleModifier())
         .navigationTitle("Request Details")
-        .overlay(alignment: .bottom) {
-            if let toastMessage {
-                ApxyDebugToastView(message: toastMessage)
-                    .padding(.bottom, 12)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+        .overlay {
+            VStack {
+                Spacer()
+                if let toastMessage {
+                    ApxyDebugToastView(message: toastMessage)
+                        .padding(.bottom, 12)
+                        .transition(toastTransition)
+                }
             }
         }
-        .animation(.spring(duration: 0.3, bounce: 0.2), value: toastMessage)
+        .animation(toastAnimation, value: toastMessage)
         .task(id: toastMessage) {
             guard toastMessage != nil else { return }
             try? await Task.sleep(for: .seconds(1.5))
@@ -339,6 +343,14 @@ struct ApxyDebugRecordDetailView: View {
         )
     }
 
+    private var toastTransition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity)
+    }
+
+    private var toastAnimation: Animation {
+        reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.3, bounce: 0.2)
+    }
+
     @ViewBuilder
     private var metricsDetailView: some View {
         if let metrics = record.metrics {
@@ -414,7 +426,8 @@ struct ApxyDebugRecordDetailView: View {
     private func selectableValue(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(.caption)
+                .bold()
                 .foregroundStyle(.secondary)
             Text(value)
                 .textSelection(.enabled)
@@ -686,10 +699,19 @@ struct ApxyDebugRecordDetailView: View {
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Record Detail") {
+#Preview("Record Detail iOS") {
     NavigationStack {
         ApxyDebugRecordDetailView(record: ApxyDebugPreviewFixtures.failedRecord)
     }
+    .apxyPreviewDetail(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Record Detail macOS") {
+    NavigationStack {
+        ApxyDebugRecordDetailView(record: ApxyDebugPreviewFixtures.failedRecord)
+    }
+    .apxyPreviewDetail(.macOS)
 }
 #endif
 
@@ -708,17 +730,5 @@ private struct ApxyDebugRequestSection: Identifiable {
 
     var cookies: [HTTPCookie] {
         ApxyDebugCookiesFormatter.cookies(headers: headers, urlString: url)
-    }
-}
-
-private struct ApxyDebugDetailListStyleModifier: ViewModifier {
-    func body(content: Content) -> some View {
-#if os(macOS)
-        content.listStyle(.automatic)
-#else
-        content
-            .listStyle(.insetGrouped)
-            .navigationBarTitleDisplayMode(.inline)
-#endif
     }
 }

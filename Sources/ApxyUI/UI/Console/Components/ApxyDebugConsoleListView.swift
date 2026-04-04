@@ -26,7 +26,7 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
                     selectedStatus: $selectedStatus
                 )
             }
-            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 2, trailing: 16))
+            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 0, trailing: 16))
             .listRowSeparator(.hidden)
 
             if records.isEmpty {
@@ -80,18 +80,18 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
     private var sidebarHeader: some View {
         HStack {
             Text(sidebarHeaderText)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .font(.subheadline.bold())
+                .foregroundStyle(.secondary)
             Spacer()
             if !activeFilters.isEmpty {
                 Button("Reset", action: onResetFilters)
                     .buttonStyle(.plain)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.bold())
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .frame(maxWidth: .infinity)
-        .background(.background)
+        .background(Color.clear)
         .textCase(nil)
     }
 
@@ -99,7 +99,7 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
         if activeFilters.isEmpty {
             return "Requests"
         }
-        return "\(visibleRecordCount) of \(totalRecordCount)"
+        return "\(visibleRecordCount) of \(totalRecordCount) shown"
     }
 
     private var emptyState: some View {
@@ -163,12 +163,19 @@ private struct ApxyDebugConsoleListViewPreview: View {
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Console List") {
+#Preview("Console List iOS") {
     ApxyDebugConsoleListViewPreview()
+        .apxyPreviewList(.iOS)
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Console List Empty") {
+#Preview("Console List macOS") {
+    ApxyDebugConsoleListViewPreview()
+        .apxyPreviewList(.macOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Console List Empty iOS") {
     ApxyDebugConsoleListView(
         records: [],
         totalRecordCount: ApxyDebugPreviewFixtures.records.count,
@@ -186,6 +193,28 @@ private struct ApxyDebugConsoleListViewPreview: View {
             EmptyView()
         }
     )
-    .frame(minWidth: 420, minHeight: 320)
+    .apxyPreviewCompactScreen(.iOS)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Console List Empty macOS") {
+    ApxyDebugConsoleListView(
+        records: [],
+        totalRecordCount: ApxyDebugPreviewFixtures.records.count,
+        visibleRecordCount: 0,
+        failureCount: 1,
+        searchText: "timeout",
+        activeFilters: ApxyDebugPreviewFixtures.activeFilters,
+        highlightedRecordIDs: [],
+        usesCompactNavigation: true,
+        selection: nil,
+        selectedStatus: .constant(.failures),
+        onResetFilters: {},
+        onSelectRecord: { _ in },
+        quickActions: { _ in
+            EmptyView()
+        }
+    )
+    .apxyPreviewCompactScreen(.macOS)
 }
 #endif
