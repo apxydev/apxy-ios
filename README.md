@@ -52,6 +52,8 @@ import ApxyCore
 Apxy.start(serverURL: "http://<your-mac-lan-ip>:8083")
 ```
 
+Remote capture now defaults to buffered HTTP delivery for lower app overhead. If you explicitly want near-realtime streaming, pass `ApxyOptions(transport: .webSocket)`.
+
 APXY is a local HTTP/HTTPS debugging proxy and traffic inspection tool for developers and AI coding agents. It lets you capture, inspect, mock, replay, and diff traffic from a CLI and Web UI.
 
 - GitHub: https://github.com/apxydev/apxy
@@ -71,6 +73,8 @@ struct DebugScreen: View {
 ```
 
 If you want full manual control, you can still configure `debugConsole` explicitly through `ApxyOptions`.
+
+When using a remote `serverURL`, keep `debugConsole` disabled unless you actively need the embedded console. Running both together increases capture and persistence overhead.
 
 The embedded console also includes a runtime settings screen for temporary debug-session changes like `serverURL`, `flushInterval`, and `capturedDomains`.
 

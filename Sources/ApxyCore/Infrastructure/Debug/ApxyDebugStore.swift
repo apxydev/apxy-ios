@@ -28,6 +28,7 @@ public actor ApxyDebugStore {
     public let options: ApxyDebugOptions
 
     private static let persistenceDebounceNanoseconds: UInt64 = 1_000_000_000
+    private static let snapshotBroadcastDebounceNanoseconds: UInt64 = 100_000_000
     private static let indexFileName = "index.json"
     private static let sessionsDirectoryName = "sessions"
     private static let recordsFileName = "records.json"
@@ -42,7 +43,9 @@ public actor ApxyDebugStore {
     private var persistedRecordsBySessionID: [String: [ApxyDebugRecord]]
     private var continuations: [UUID: AsyncStream<ApxyDebugSnapshot>.Continuation]
     private var persistTask: Task<Void, Never>?
+    private var broadcastTask: Task<Void, Never>?
     private var hasPendingPersistence = false
+    private var hasPendingBroadcast = false
     private var persistWriteCount = 0
     private var dirtySessionIDs: Set<String>
     private var deletedSessionIDs: Set<String>
@@ -77,6 +80,7 @@ public actor ApxyDebugStore {
         self.continuations = [:]
         self.dirtySessionIDs = []
         self.deletedSessionIDs = []
+        self.broadcastTask = nil
     }
 
     public func beginSession(
@@ -104,7 +108,7 @@ public actor ApxyDebugStore {
             context: context
         )
         markSessionDirty(id)
-        broadcastSnapshot()
+        broadcastSnapshotNow()
     }
 
     public func updateSessionContext(
@@ -119,7 +123,7 @@ public actor ApxyDebugStore {
         }
         persistedSessionsByID[id] = session
         markSessionDirty(id)
-        broadcastSnapshot()
+        broadcastSnapshotNow()
     }
 
     public func markSessionSyncState(
@@ -148,7 +152,7 @@ public actor ApxyDebugStore {
         }
         persistedSessionsByID[id] = session
         markSessionDirty(id)
-        broadcastSnapshot()
+        broadcastSnapshotNow()
     }
 
     public func append(_ record: ApxyDebugRecord) {
@@ -161,13 +165,16 @@ public actor ApxyDebugStore {
         recalculateSessionStats(for: sessionID)
         trimPersistedRecordsIfNeeded()
         markSessionDirty(sessionID)
-        broadcastSnapshot()
+        scheduleBroadcast()
     }
 
     public func clear() {
         persistTask?.cancel()
         persistTask = nil
+        broadcastTask?.cancel()
+        broadcastTask = nil
         hasPendingPersistence = false
+        hasPendingBroadcast = false
         persistedSessionsByID.removeAll(keepingCapacity: false)
         persistedRecordsBySessionID.removeAll(keepingCapacity: false)
         dirtySessionIDs.removeAll(keepingCapacity: false)
@@ -181,7 +188,7 @@ public actor ApxyDebugStore {
         } catch {
             SDKLogger.warn("ApxyDebugStore failed clearing store: \(error.localizedDescription)")
         }
-        broadcastSnapshot()
+        broadcastSnapshotNow()
     }
 
     public func deleteSession(id sessionID: String) {
@@ -190,7 +197,7 @@ public actor ApxyDebugStore {
         }
 
         removeSession(sessionID)
-        broadcastSnapshot()
+        broadcastSnapshotNow()
     }
 
     public func snapshot() -> ApxyDebugSnapshot {
@@ -382,6 +389,35 @@ public actor ApxyDebugStore {
     private func completeScheduledPersist() async {
         persistTask = nil
         flushPersistenceIfNeeded()
+    }
+
+    private func scheduleBroadcast() {
+        hasPendingBroadcast = true
+        guard broadcastTask == nil else { return }
+
+        broadcastTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.snapshotBroadcastDebounceNanoseconds)
+            } catch {
+                return
+            }
+
+            await self?.completeScheduledBroadcast()
+        }
+    }
+
+    private func completeScheduledBroadcast() async {
+        broadcastTask = nil
+        guard hasPendingBroadcast else { return }
+        hasPendingBroadcast = false
+        broadcastSnapshot()
+    }
+
+    private func broadcastSnapshotNow() {
+        broadcastTask?.cancel()
+        broadcastTask = nil
+        hasPendingBroadcast = false
+        broadcastSnapshot()
     }
 
     private func flushPersistenceIfNeeded() {

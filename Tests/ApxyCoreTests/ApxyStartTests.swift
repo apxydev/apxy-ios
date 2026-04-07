@@ -3,6 +3,20 @@ import Testing
 
 @Suite(.serialized)
 struct ApxyStartTests {
+    @Test func optionsDefaultToBufferedHTTPTransport() {
+        let options = ApxyOptions()
+
+        let usesHTTPByDefault: Bool
+        switch options.transport {
+        case .http:
+            usesHTTPByDefault = true
+        case .webSocket, .auto:
+            usesHTTPByDefault = false
+        }
+
+        #expect(usesHTTPByDefault)
+    }
+
     @Test func localOnlyStartEnablesDebugStoreByDefault() {
         Apxy.stop()
 

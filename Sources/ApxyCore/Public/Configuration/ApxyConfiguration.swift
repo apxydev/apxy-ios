@@ -53,7 +53,7 @@ public struct ApxyRuntimeConfiguration: Sendable, Equatable {
 
 /// Full configuration for ApxyCore.
 public struct ApxyOptions: Sendable {
-    /// Transport strategy. Default: `.auto`.
+    /// Transport strategy. Default: `.http`.
     public var transport: ApxyTransport
     /// Allow the SDK to run in non-DEBUG builds. Default: `false`.
     public var enableInRelease: Bool
@@ -86,7 +86,7 @@ public struct ApxyOptions: Sendable {
     public var capturePolicy: ApxyCapturePolicy
 
     public init(
-        transport: ApxyTransport = .auto,
+        transport: ApxyTransport = .http,
         enableInRelease: Bool = false,
         bufferSize: Int = 100,
         flushInterval: TimeInterval = 2.0,

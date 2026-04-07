@@ -58,7 +58,7 @@ Default initializer:
 
 ```swift
 ApxyOptions(
-    transport: .auto,
+    transport: .http,
     enableInRelease: false,
     bufferSize: 100,
     flushInterval: 2.0,
@@ -88,6 +88,12 @@ public enum ApxyTransport {
 - `.http`: batch records and send on the flush loop
 - `.webSocket`: push records immediately over WebSocket
 - `.auto`: prefer WebSocket when available, otherwise fall back to HTTP
+
+Recommendation:
+
+- Use `.http` as the default remote mode for lower runtime overhead
+- Use `.webSocket` only when you explicitly need near-realtime desktop streaming
+- Avoid combining a remote `serverURL` with `debugConsole.isEnabled == true` unless you need both at the same time
 
 ## `enableInRelease`
 

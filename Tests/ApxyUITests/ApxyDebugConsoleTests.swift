@@ -6,7 +6,7 @@ import Testing
 
 @Suite(.serialized)
 struct ApxyDebugConsoleTests {
-    @Test func filterMatchesStatusMethodHostSessionAndSearch() {
+    @Test func filterMatchesStatusMethodSessionAndSearch() {
         let records = [
             makeRecord(
                 id: "one",
@@ -32,7 +32,6 @@ struct ApxyDebugConsoleTests {
                 searchText: "denied",
                 status: .failures,
                 sessionID: "session-b",
-                host: "auth.example.com",
                 method: "POST"
             )
         )
@@ -170,7 +169,6 @@ struct ApxyDebugConsoleTests {
                 viewModel.totalRecordCount,
                 viewModel.visibleRecordCount,
                 viewModel.failureCount,
-                viewModel.hosts,
                 viewModel.methods,
                 viewModel.sessions.map(\.id),
                 viewModel.selectedRecord?.id
@@ -180,10 +178,9 @@ struct ApxyDebugConsoleTests {
         #expect(state.0 == 2)
         #expect(state.1 == 2)
         #expect(state.2 == 1)
-        #expect(state.3 == ["api.example.com", "auth.example.com"])
-        #expect(state.4 == ["GET", "POST"])
-        #expect(state.5 == ["session-a", "session-b"])
-        #expect(state.6 == "newer")
+        #expect(state.3 == ["GET", "POST"])
+        #expect(state.4 == ["session-a", "session-b"])
+        #expect(state.5 == "newer")
     }
 
     @Test func viewModelHighlightsOnlyNewlyInsertedRecords() async throws {
@@ -216,13 +213,11 @@ struct ApxyDebugConsoleTests {
         viewModel.searchText = "denied"
         viewModel.status = .failures
         viewModel.selectedSessionID = "session-a"
-        viewModel.selectedHost = "api.example.com"
         viewModel.selectedMethod = "POST"
 
         #expect(viewModel.activeFilters == [
             "Failures",
             "Session session-",
-            "api.example.com",
             "POST",
             "\"denied\""
         ])
@@ -236,14 +231,12 @@ struct ApxyDebugConsoleTests {
         viewModel.searchText = "denied"
         viewModel.status = .failures
         viewModel.selectedSessionID = "session-a"
-        viewModel.selectedHost = "api.example.com"
         viewModel.selectedMethod = "POST"
 
-        viewModel.clearFilter(.host)
+        viewModel.clearFilter(.method)
 
-        #expect(viewModel.selectedHost == nil)
+        #expect(viewModel.selectedMethod == nil)
         #expect(viewModel.selectedSessionID == "session-a")
-        #expect(viewModel.selectedMethod == "POST")
         #expect(viewModel.status == .failures)
         #expect(viewModel.searchText == "denied")
     }
@@ -253,23 +246,21 @@ struct ApxyDebugConsoleTests {
             searchText: "denied",
             status: .failures,
             selectedSessionID: "session-a",
-            selectedHost: "api.example.com",
             selectedMethod: "POST"
         )
 
-        filterState.clear(.host)
+        filterState.clear(.method)
 
-        #expect(filterState.selectedHost == nil)
+        #expect(filterState.selectedMethod == nil)
         #expect(filterState.selectedSessionID == "session-a")
-        #expect(filterState.selectedMethod == "POST")
         #expect(filterState.status == .failures)
         #expect(filterState.searchText == "denied")
     }
 
     @Test func resetFiltersClearsStructuredStateAndRestoresVisibleRecords() async throws {
         let store = makeStore()
-        await store.append(makeRecord(id: "one", host: "api.example.com", statusCode: 200))
-        await store.append(makeRecord(id: "two", host: "auth.example.com", statusCode: 500))
+        await store.append(makeRecord(id: "one", method: "GET", host: "api.example.com", statusCode: 200))
+        await store.append(makeRecord(id: "two", method: "POST", host: "auth.example.com", statusCode: 500))
 
         let viewModel = await MainActor.run {
             ApxyDebugConsoleViewModel(store: store)
@@ -282,7 +273,7 @@ struct ApxyDebugConsoleTests {
         await MainActor.run {
             viewModel.searchText = "failed"
             viewModel.status = .failures
-            viewModel.selectedHost = "auth.example.com"
+            viewModel.selectedMethod = "POST"
         }
 
         let filteredState = await MainActor.run {
@@ -299,7 +290,6 @@ struct ApxyDebugConsoleTests {
             (
                 viewModel.searchText,
                 viewModel.status,
-                viewModel.selectedHost,
                 viewModel.selectedMethod,
                 viewModel.selectedSessionID,
                 viewModel.records.map(\.id),
@@ -310,9 +300,8 @@ struct ApxyDebugConsoleTests {
         #expect(resetState.1 == .all)
         #expect(resetState.2 == nil)
         #expect(resetState.3 == nil)
-        #expect(resetState.4 == nil)
-        #expect(resetState.5 == ["two", "one"])
-        #expect(resetState.6 == 2)
+        #expect(resetState.4 == ["two", "one"])
+        #expect(resetState.5 == 2)
     }
 
     @Test func resetFiltersRestoresVisibleRecordsAndKeepsValidSelection() async throws {
@@ -432,7 +421,6 @@ struct ApxyDebugConsoleTests {
 
         await MainActor.run {
             viewModel.status = .failures
-            viewModel.selectedHost = "auth.example.com"
             viewModel.selectedSessionID = "session-b"
         }
 

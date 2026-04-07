@@ -67,6 +67,12 @@ public final class Apxy {
         self.webSocketReconnectCooldown = options.webSocketReconnectCooldown
         self.capturedDomains = normalizedCapturedDomains
 
+        if normalizedServerURL != nil, options.debugConsole.isEnabled {
+            SDKLogger.warn(
+                "ApxyCore: remote transport and debugConsole are both enabled; this increases capture overhead"
+            )
+        }
+
         let (sessionTransport, recordTransport, deliveryMode) = Self.makeTransports(
             serverURL: normalizedServerURL,
             transportMode: transportMode,

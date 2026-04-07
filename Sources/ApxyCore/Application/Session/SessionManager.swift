@@ -22,6 +22,10 @@ actor SessionManager {
     private var connectionSnapshot = ConnectionSnapshot.unknown
     private var isRunning = false
     private var flushTask: Task<Void, Never>?
+    private var scheduledFlushTask: Task<Void, Never>?
+    private var activeFlushTask: Task<Void, Never>?
+    private var flushRequestedWhileActive = false
+    private var contextSyncTask: Task<Void, Never>?
 
     init(
         transport: any SessionTransporting,
@@ -67,8 +71,12 @@ actor SessionManager {
         }
         flushTask?.cancel()
         flushTask = nil
+        scheduledFlushTask?.cancel()
+        scheduledFlushTask = nil
+        contextSyncTask?.cancel()
+        contextSyncTask = nil
 
-        await flushBufferedRecords()
+        await finishPendingRecordFlushes()
         await oldRecordTransport.stop()
 
         self.transport = transport
@@ -128,7 +136,14 @@ actor SessionManager {
 
         flushTask?.cancel()
         flushTask = nil
+        scheduledFlushTask?.cancel()
+        scheduledFlushTask = nil
+        contextSyncTask?.cancel()
+        contextSyncTask = nil
 
+        if let activeFlushTask {
+            await activeFlushTask.value
+        }
         await flushBufferedRecords()
         await recordTransport.stop()
 
@@ -176,19 +191,19 @@ actor SessionManager {
     func setUser(_ user: ApxyUser) async {
         guard isRunning else { return }
         context.setUser(user)
-        await syncContextToActiveSession()
+        scheduleContextSync()
     }
 
     func setTag(key: String, value: String) async {
         guard isRunning else { return }
         context.setTag(key: key, value: value)
-        await syncContextToActiveSession()
+        scheduleContextSync()
     }
 
     func setContext(key: String, value: ApxyContextValue) async {
         guard isRunning else { return }
         context.setContext(key: key, value: value)
-        await syncContextToActiveSession()
+        scheduleContextSync()
     }
 
     func capture(_ payload: CapturePayload, debugContext: DebugCaptureContext? = nil) async {
@@ -254,6 +269,8 @@ actor SessionManager {
 
     private func startNewSession() async {
         guard isRunning, let sdkClient else { return }
+        contextSyncTask?.cancel()
+        contextSyncTask = nil
 
         let sessionID = UUID().uuidString
         let createdAt = Date()
@@ -313,18 +330,13 @@ actor SessionManager {
     }
 
     private func dispatch(_ record: NetworkRecord) async {
+        await buffer.append(record)
+
         switch recordDeliveryMode {
         case .buffered:
-            await buffer.append(record)
+            break
         case .immediate:
-            do {
-                try await recordTransport.send(records: [record])
-            } catch {
-                SDKLogger.warn(
-                    "immediate transport send failed; buffering record for retry: \(error.localizedDescription)"
-                )
-                await buffer.append(record)
-            }
+            scheduleRecordFlush()
         }
     }
 
@@ -338,9 +350,85 @@ actor SessionManager {
                     break
                 }
 
-                await self.flushBufferedRecords()
+                self.scheduleRecordFlush()
             }
         }
+    }
+
+    private func scheduleRecordFlush(after delay: TimeInterval = 0) {
+        guard isRunning else { return }
+
+        if activeFlushTask != nil {
+            flushRequestedWhileActive = true
+            return
+        }
+
+        guard scheduledFlushTask == nil else { return }
+
+        scheduledFlushTask = Task {
+            if delay > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: sleepNanoseconds(for: delay))
+                } catch {
+                    return
+                }
+            }
+
+            await self.beginScheduledRecordFlush()
+        }
+    }
+
+    private func beginScheduledRecordFlush() async {
+        scheduledFlushTask = nil
+        guard isRunning else { return }
+
+        if activeFlushTask != nil {
+            flushRequestedWhileActive = true
+            return
+        }
+
+        activeFlushTask = Task {
+            await self.performRecordFlushLoop()
+        }
+    }
+
+    private func performRecordFlushLoop() async {
+        while isRunning {
+            flushRequestedWhileActive = false
+
+            let records = await buffer.drain()
+            guard !records.isEmpty else { break }
+
+            do {
+                try await recordTransport.send(records: records)
+            } catch {
+                SDKLogger.warn(
+                    "record flush failed; re-buffering \(records.count) record(s): \(error.localizedDescription)"
+                )
+                await buffer.prepend(records)
+                break
+            }
+
+            guard flushRequestedWhileActive else { break }
+        }
+
+        activeFlushTask = nil
+
+        if isRunning, flushRequestedWhileActive {
+            flushRequestedWhileActive = false
+            scheduleRecordFlush()
+        }
+    }
+
+    private func finishPendingRecordFlushes() async {
+        scheduledFlushTask?.cancel()
+        scheduledFlushTask = nil
+
+        if let activeFlushTask {
+            await activeFlushTask.value
+        }
+
+        await flushBufferedRecords()
     }
 
     private func flushBufferedRecords() async {
@@ -355,6 +443,20 @@ actor SessionManager {
             )
             await buffer.prepend(records)
         }
+    }
+
+    private func scheduleContextSync() {
+        guard isRunning, currentSessionID != nil else { return }
+
+        guard contextSyncTask == nil else { return }
+        contextSyncTask = Task {
+            await self.performScheduledContextSync()
+        }
+    }
+
+    private func performScheduledContextSync() async {
+        contextSyncTask = nil
+        await syncContextToActiveSession()
     }
 
     private func logCaptureDetails(
