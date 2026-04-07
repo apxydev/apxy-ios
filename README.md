@@ -78,6 +78,16 @@ When using a remote `serverURL`, keep `debugConsole` disabled unless you activel
 
 The embedded console also includes a runtime settings screen for temporary debug-session changes like `serverURL`, `flushInterval`, and `capturedDomains`.
 
+### Screenshots
+
+| Sessions | Request Details |
+| --- | --- |
+| ![Apxy embedded debug console showing captured sessions](assets/apxy-sessions.png) | ![Apxy embedded debug console showing request details](assets/apxy-request-details.png) |
+
+| Live Traffic | Runtime Settings |
+| --- | --- |
+| ![Apxy embedded debug console showing live traffic](assets/apxy-live-traffic.png) | ![Apxy embedded debug console showing runtime settings](assets/apxy-settings.png) |
+
 ## Documentation
 
 - Full configuration: [docs/configuration.md](docs/configuration.md)

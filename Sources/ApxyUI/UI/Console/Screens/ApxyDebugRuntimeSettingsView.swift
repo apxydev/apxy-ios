@@ -99,54 +99,34 @@ struct ApxyDebugRuntimeSettingsView: View {
                     .foregroundStyle(theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                ViewThatFits {
-                    HStack(spacing: 12) {
-                        summaryMetric(
-                            title: "Destination",
-                            value: viewModel.activeDestinationSummary,
-                            systemImage: "dot.radiowaves.left.and.right",
-                            tone: .accent,
-                            theme: theme
-                        )
-                        summaryMetric(
-                            title: "Flush",
-                            value: viewModel.activeFlushIntervalSummary,
-                            systemImage: "timer",
-                            tone: .warning,
-                            theme: theme
-                        )
-                        summaryMetric(
-                            title: "Domains",
-                            value: viewModel.activeDomainSummary,
-                            systemImage: "globe",
-                            tone: .success,
-                            theme: theme
-                        )
-                    }
-
-                    VStack(spacing: 12) {
-                        summaryMetric(
-                            title: "Destination",
-                            value: viewModel.activeDestinationSummary,
-                            systemImage: "dot.radiowaves.left.and.right",
-                            tone: .accent,
-                            theme: theme
-                        )
-                        summaryMetric(
-                            title: "Flush",
-                            value: viewModel.activeFlushIntervalSummary,
-                            systemImage: "timer",
-                            tone: .warning,
-                            theme: theme
-                        )
-                        summaryMetric(
-                            title: "Domains",
-                            value: viewModel.activeDomainSummary,
-                            systemImage: "globe",
-                            tone: .success,
-                            theme: theme
-                        )
-                    }
+                LazyVGrid(
+                    columns: [
+                        GridItem(.adaptive(minimum: 132, maximum: 220), spacing: 12, alignment: .top)
+                    ],
+                    alignment: .leading,
+                    spacing: 12
+                ) {
+                    summaryMetric(
+                        title: "Destination",
+                        value: viewModel.activeDestinationSummary,
+                        systemImage: "dot.radiowaves.left.and.right",
+                        tone: .accent,
+                        theme: theme
+                    )
+                    summaryMetric(
+                        title: "Flush",
+                        value: viewModel.activeFlushIntervalSummary,
+                        systemImage: "timer",
+                        tone: .warning,
+                        theme: theme
+                    )
+                    summaryMetric(
+                        title: "Domains",
+                        value: viewModel.activeDomainSummary,
+                        systemImage: "globe",
+                        tone: .success,
+                        theme: theme
+                    )
                 }
             }
         }
@@ -397,18 +377,25 @@ struct ApxyDebugRuntimeSettingsView: View {
         let tint = tone.color(in: theme)
 
         return VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: systemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(tint)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.semibold))
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
 
             Text(value)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(theme.textPrimary)
                 .lineLimit(2)
+                .minimumScaleFactor(0.9)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
         .background(theme.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
