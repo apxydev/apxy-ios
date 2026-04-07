@@ -250,19 +250,29 @@ public struct ApxyDebugSession: Codable, Sendable, Hashable, Identifiable {
     public var lastEventAt: Date
     public var requestCount: Int
     public var failureCount: Int
+    public var syncState: ApxyLocalSessionSyncState
+
+    public var isShareable: Bool {
+        switch syncState {
+        case .localOnly, .synced, .failed: return true
+        case .liveManaged, .syncing: return false
+        }
+    }
 
     public init(
         id: String,
         startedAt: Date,
         lastEventAt: Date,
         requestCount: Int,
-        failureCount: Int
+        failureCount: Int,
+        syncState: ApxyLocalSessionSyncState = .localOnly
     ) {
         self.id = id
         self.startedAt = startedAt
         self.lastEventAt = lastEventAt
         self.requestCount = requestCount
         self.failureCount = failureCount
+        self.syncState = syncState
     }
 }
 

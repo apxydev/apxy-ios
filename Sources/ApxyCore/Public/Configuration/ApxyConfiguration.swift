@@ -29,9 +29,31 @@ public enum ApxyConnectionEvent: Sendable {
     case transportDisconnected(reason: String?)
 }
 
+/// Runtime-only configuration that can be applied after startup.
+///
+/// The values are session-scoped and not persisted automatically.
+public struct ApxyRuntimeConfiguration: Sendable, Equatable {
+    /// APXY server URL string. `nil` uses local-only mode.
+    public var serverURL: String?
+    /// Seconds between flushes for buffered HTTP mode.
+    public var flushInterval: TimeInterval
+    /// Optional list of allowed captured domains. `nil` captures all hosts.
+    public var capturedDomains: [String]?
+
+    public init(
+        serverURL: String? = nil,
+        flushInterval: TimeInterval = 2.0,
+        capturedDomains: [String]? = nil
+    ) {
+        self.serverURL = serverURL
+        self.flushInterval = flushInterval
+        self.capturedDomains = capturedDomains
+    }
+}
+
 /// Full configuration for ApxyCore.
 public struct ApxyOptions: Sendable {
-    /// Transport strategy. Default: `.auto`.
+    /// Transport strategy. Default: `.http`.
     public var transport: ApxyTransport
     /// Allow the SDK to run in non-DEBUG builds. Default: `false`.
     public var enableInRelease: Bool
@@ -64,7 +86,7 @@ public struct ApxyOptions: Sendable {
     public var capturePolicy: ApxyCapturePolicy
 
     public init(
-        transport: ApxyTransport = .auto,
+        transport: ApxyTransport = .http,
         enableInRelease: Bool = false,
         bufferSize: Int = 100,
         flushInterval: TimeInterval = 2.0,

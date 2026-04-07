@@ -1,4 +1,4 @@
-enum ApxyDebugConsoleRoute: Hashable {
+enum ApxyDebugRoute: Hashable {
     case record(String)
 
     var recordID: String {

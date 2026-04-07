@@ -28,7 +28,12 @@ public final class Apxy {
 
     private let sessionManager: SessionManager
     private let connectionMonitor: ConnectionMonitor
-    private let capturedDomains: [String]?
+    private let connectionStateTracker: ConnectionStateTracker
+    private var runtimeConfiguration: ApxyRuntimeConfiguration
+    private var capturedDomains: [String]?
+    private let transportMode: ApxyTransport
+    private let webSocketMaxReconnectAttempts: Int
+    private let webSocketReconnectCooldown: TimeInterval
     private let capturePolicy: ApxyCapturePolicy
     private let debugStore: ApxyDebugStore?
 #if canImport(UIKit)
@@ -44,70 +49,55 @@ public final class Apxy {
                 onEvent(event)
             }
         }
+        self.connectionStateTracker = connectionStateTracker
 
-        let recordTransport: any RecordTransport
-        let sessionTransport: any SessionTransporting
-        let deliveryMode: RecordDeliveryMode
+        let normalizedServerURL = Self.normalizeServerURL(serverURL)
+        let normalizedFlushInterval = Self.normalizeFlushInterval(options.flushInterval)
+        let normalizedCapturedDomains = Self.normalizeDomains(options.capturedDomains)
 
-        if let serverURL {
-            sessionTransport = SessionTransport(serverURL: serverURL)
+        self.runtimeConfiguration = ApxyRuntimeConfiguration(
+            serverURL: normalizedServerURL?.absoluteString,
+            flushInterval: normalizedFlushInterval,
+            capturedDomains: normalizedCapturedDomains
+        )
+        self.capturePolicy = options.capturePolicy
+        self.debugStore = options.debugConsole.isEnabled ? ApxyDebugStore(options: options.debugConsole) : nil
+        self.transportMode = options.transport
+        self.webSocketMaxReconnectAttempts = options.webSocketMaxReconnectAttempts
+        self.webSocketReconnectCooldown = options.webSocketReconnectCooldown
+        self.capturedDomains = normalizedCapturedDomains
 
-            let useWebSocket: Bool
-            switch options.transport {
-            case .webSocket:
-                useWebSocket = true
-            case .http:
-                useWebSocket = false
-            case .auto:
-                if #available(iOS 13.0, macOS 10.15, *) {
-                    useWebSocket = true
-                } else {
-                    useWebSocket = false
-                }
-            }
-
-            if useWebSocket, #available(iOS 13.0, macOS 10.15, *) {
-                recordTransport = WebSocketTransport(
-                    serverURL: serverURL,
-                    connectionStateTracker: connectionStateTracker,
-                    reconnectPolicy: WebSocketReconnectPolicy(
-                        maxAttempts: options.webSocketMaxReconnectAttempts,
-                        cooldown: options.webSocketReconnectCooldown
-                    )
-                )
-                deliveryMode = .immediate
-            } else {
-                recordTransport = HTTPTransport(
-                    serverURL: serverURL,
-                    connectionStateTracker: connectionStateTracker
-                )
-                deliveryMode = .buffered
-            }
-        } else {
-            sessionTransport = LocalOnlySessionTransport()
-            recordTransport = LocalOnlyRecordTransport()
-            deliveryMode = .buffered
+        if normalizedServerURL != nil, options.debugConsole.isEnabled {
+            SDKLogger.warn(
+                "ApxyCore: remote transport and debugConsole are both enabled; this increases capture overhead"
+            )
         }
 
-        let debugStore = options.debugConsole.isEnabled ? ApxyDebugStore(options: options.debugConsole) : nil
-        self.capturePolicy = options.capturePolicy
-        self.debugStore = debugStore
+        let (sessionTransport, recordTransport, deliveryMode) = Self.makeTransports(
+            serverURL: normalizedServerURL,
+            transportMode: transportMode,
+            webSocketMaxReconnectAttempts: webSocketMaxReconnectAttempts,
+            webSocketReconnectCooldown: webSocketReconnectCooldown,
+            connectionStateTracker: connectionStateTracker
+        )
+
         self.sessionManager = SessionManager(
             transport: sessionTransport,
             recordTransport: recordTransport,
-            debugStore: debugStore,
+            debugStore: self.debugStore,
+            serverURL: normalizedServerURL?.absoluteString,
             connectionStateTracker: connectionStateTracker,
             bufferCapacity: options.bufferSize,
             recordDeliveryMode: deliveryMode,
-            flushInterval: options.flushInterval,
+            flushInterval: normalizedFlushInterval,
             sessionIdleTimeout: options.sessionIdleTimeout
         )
+
         self.connectionMonitor = ConnectionMonitor { [sessionManager] snapshot in
             Task {
                 await sessionManager.updateConnection(snapshot)
             }
         }
-        self.capturedDomains = options.capturedDomains
 #if canImport(UIKit)
         self.lifecycleObserver = AppLifecycleObserver(
             onBecomeActive: { [sessionManager] in
@@ -127,13 +117,13 @@ public final class Apxy {
 #endif
 
         let transportLabel: String
-        if serverURL == nil {
+        if normalizedServerURL == nil {
             transportLabel = "local-only"
         } else {
             transportLabel = (deliveryMode == .immediate) ? "webSocket" : "http"
         }
         SDKLogger.debug(
-            "started transport=\(transportLabel) bufferSize=\(options.bufferSize) flushInterval=\(options.flushInterval)"
+            "started transport=\(transportLabel) bufferSize=\(options.bufferSize) flushInterval=\(normalizedFlushInterval)"
         )
     }
 
@@ -172,7 +162,7 @@ public final class Apxy {
         }
 #endif
 
-        guard let url = URL(string: serverURL) else {
+        guard let url = normalizeServerURL(serverURL) else {
             SDKLogger.warn("ApxyCore: invalid serverURL '\(serverURL)' — SDK not started")
             return
         }
@@ -194,6 +184,23 @@ public final class Apxy {
 
         instance.shutdown()
         SDKLogger.debug("stop: SDK stopped")
+    }
+
+    /// Apply runtime configuration without restarting the app process.
+    ///
+    /// Use this to modify server endpoint, flush interval, and captured domains
+    /// while traffic capture is active.
+    public static func reconfigure(_ configuration: ApxyRuntimeConfiguration) {
+        guard let instance = activeInstance() else { return }
+        instance.applyRuntimeConfiguration(configuration)
+    }
+
+    /// Returns the current runtime configuration for the active SDK instance.
+    /// Values are session-only and not persisted.
+    public static var activeRuntimeConfiguration: ApxyRuntimeConfiguration? {
+        sharedLock.lock()
+        defer { sharedLock.unlock() }
+        return shared?.runtimeConfiguration
     }
 
     /// Set the current authenticated user. Updates the session context immediately.
@@ -236,6 +243,26 @@ public final class Apxy {
     /// Returns the local embedded debug store when debug recording is enabled.
     public static var activeDebugStore: ApxyDebugStore? {
         activeInstance()?.debugStore
+    }
+
+    /// Returns persisted local sessions stored for the embedded debug console.
+    public static func localSessions() async -> [ApxyLocalSession] {
+        guard let store = activeInstance()?.debugStore else { return [] }
+        return await store.localSessions()
+    }
+
+    /// Returns persisted local sessions that can be shared manually to APXY Core.
+    public static func shareableLocalSessions() async -> [ApxyLocalSession] {
+        guard let store = activeInstance()?.debugStore else { return [] }
+        return await store.shareableLocalSessions()
+    }
+
+    /// Manually uploads a persisted local session to the currently configured APXY Core server.
+    public static func shareLocalSession(id: String) async throws {
+        guard let instance = activeInstance() else {
+            throw ApxyLocalSessionShareError.sdkNotRunning
+        }
+        try await instance.shareLocalSession(id: id)
     }
 
     func capture(
@@ -292,6 +319,182 @@ public final class Apxy {
         }
     }
 
+    private static func normalizeServerURL(_ value: String?) -> URL? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let parsed = URL(string: trimmed) else { return nil }
+        guard let scheme = parsed.scheme?.lowercased(), ["http", "https", "ws", "wss"].contains(scheme) else {
+            return nil
+        }
+
+        return parsed
+    }
+
+    private static func normalizeServerURL(_ value: URL?) -> URL? {
+        guard let value else { return nil }
+        return normalizeServerURL(value.absoluteString)
+    }
+
+    private static func normalizeFlushInterval(_ value: TimeInterval) -> TimeInterval {
+        max(1, value)
+    }
+
+    private static func normalizeDomains(_ values: [String]?) -> [String]? {
+        guard let values else { return nil }
+        let normalized = values
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private static func makeTransports(
+        serverURL: URL?,
+        transportMode: ApxyTransport,
+        webSocketMaxReconnectAttempts: Int,
+        webSocketReconnectCooldown: TimeInterval,
+        connectionStateTracker: ConnectionStateTracker
+    ) -> (SessionTransporting, RecordTransport, RecordDeliveryMode) {
+        guard let serverURL else {
+            return (LocalOnlySessionTransport(), LocalOnlyRecordTransport(), .buffered)
+        }
+
+        let sessionTransport = SessionTransport(serverURL: serverURL)
+
+        let useWebSocket: Bool
+        switch transportMode {
+        case .webSocket:
+            useWebSocket = true
+        case .http:
+            useWebSocket = false
+        case .auto:
+            if #available(iOS 13.0, macOS 10.15, *) {
+                useWebSocket = true
+            } else {
+                useWebSocket = false
+            }
+        }
+
+        if useWebSocket, #available(iOS 13.0, macOS 10.15, *) {
+            return (
+                sessionTransport,
+                WebSocketTransport(
+                    serverURL: serverURL,
+                    connectionStateTracker: connectionStateTracker,
+                    reconnectPolicy: WebSocketReconnectPolicy(
+                        maxAttempts: webSocketMaxReconnectAttempts,
+                        cooldown: webSocketReconnectCooldown
+                    )
+                ),
+                .immediate
+            )
+        }
+
+        return (
+            sessionTransport,
+            HTTPTransport(serverURL: serverURL, connectionStateTracker: connectionStateTracker),
+            .buffered
+        )
+    }
+
+    private func applyCapturedDomains(_ domains: [String]?) {
+        if let domains, !domains.isEmpty {
+            ApxyURLProtocol.domainFilter = DomainFilter(domains: domains)
+        } else {
+            ApxyURLProtocol.domainFilter = nil
+        }
+    }
+
+    private func applyRuntimeConfiguration(_ configuration: ApxyRuntimeConfiguration) {
+        let normalizedServerURL = Self.normalizeServerURL(configuration.serverURL)
+        if configuration.serverURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+           normalizedServerURL == nil {
+            SDKLogger.warn("ApxyCore: invalid serverURL '\(configuration.serverURL ?? "")' — using local-only mode")
+        }
+
+        let normalizedDomains = Self.normalizeDomains(configuration.capturedDomains)
+        let normalizedFlushInterval = Self.normalizeFlushInterval(configuration.flushInterval)
+
+        runtimeConfiguration = ApxyRuntimeConfiguration(
+            serverURL: normalizedServerURL?.absoluteString,
+            flushInterval: normalizedFlushInterval,
+            capturedDomains: normalizedDomains
+        )
+        capturedDomains = normalizedDomains
+        applyCapturedDomains(normalizedDomains)
+
+        let (sessionTransport, recordTransport, deliveryMode) = Self.makeTransports(
+            serverURL: normalizedServerURL,
+            transportMode: transportMode,
+            webSocketMaxReconnectAttempts: webSocketMaxReconnectAttempts,
+            webSocketReconnectCooldown: webSocketReconnectCooldown,
+            connectionStateTracker: connectionStateTracker
+        )
+        let sessionManager = self.sessionManager
+        Task {
+            await sessionManager.reconfigure(
+                transport: sessionTransport,
+                recordTransport: recordTransport,
+                serverURL: normalizedServerURL?.absoluteString,
+                recordDeliveryMode: deliveryMode,
+                flushInterval: normalizedFlushInterval
+            )
+        }
+    }
+
+    private func shareLocalSession(id: String) async throws {
+        guard let debugStore else {
+            throw ApxyLocalSessionShareError.debugConsoleDisabled
+        }
+        guard let serverURLString = runtimeConfiguration.serverURL,
+              let serverURL = Self.normalizeServerURL(serverURLString) else {
+            throw ApxyLocalSessionShareError.missingServerURL
+        }
+
+        let payload = try await debugStore.loadSessionForSharing(id: id)
+        let connectionTracker = ConnectionStateTracker { _ in }
+        let sessionTransport = SessionTransport(serverURL: serverURL)
+        let recordTransport = HTTPTransport(serverURL: serverURL, connectionStateTracker: connectionTracker)
+
+        await debugStore.markSessionSyncState(
+            id: id,
+            state: .syncing,
+            serverURL: serverURL.absoluteString,
+            errorMessage: nil
+        )
+
+        do {
+            let sdkClient = payload.session.sdkClient ?? ClientIdentity.build()
+            try await sessionTransport.registerClient(sdkClient)
+            try await sessionTransport.createSession(
+                id: payload.session.id,
+                name: payload.session.name,
+                createdAt: payload.session.createdAt,
+                clientID: sdkClient.id,
+                context: payload.session.context ?? ClientContext()
+            )
+
+            for chunk in payload.records.chunked(maxRecords: 100, maxBytes: 512 * 1024) {
+                try await recordTransport.send(records: chunk)
+            }
+
+            await debugStore.markSessionSyncState(
+                id: id,
+                state: .synced,
+                serverURL: serverURL.absoluteString,
+                errorMessage: nil
+            )
+        } catch {
+            await debugStore.markSessionSyncState(
+                id: id,
+                state: .failed,
+                serverURL: serverURL.absoluteString,
+                errorMessage: error.localizedDescription
+            )
+            throw error
+        }
+    }
+
     static func activeInstance() -> Apxy? {
         sharedLock.lock()
         defer { sharedLock.unlock() }
@@ -307,11 +510,7 @@ public final class Apxy {
     }
 
     private func activate() {
-        if let capturedDomains, !capturedDomains.isEmpty {
-            ApxyURLProtocol.domainFilter = DomainFilter(domains: capturedDomains)
-        } else {
-            ApxyURLProtocol.domainFilter = nil
-        }
+        applyCapturedDomains(capturedDomains)
         ApxyURLProtocol.capturePolicy = capturePolicy
 
         connectionMonitor.start()
@@ -348,6 +547,41 @@ public final class Apxy {
             semaphore.signal()
         }
         semaphore.wait()
+    }
+}
+
+private extension Array where Element == NetworkRecord {
+    func chunked(maxRecords: Int, maxBytes: Int) -> [[NetworkRecord]] {
+        guard !isEmpty else { return [] }
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        var chunks: [[NetworkRecord]] = []
+        var currentChunk: [NetworkRecord] = []
+        var currentBytes = 2
+
+        for record in self {
+            let recordBytes = (try? encoder.encode(record).count) ?? 0
+            let separatorBytes = currentChunk.isEmpty ? 0 : 1
+            let exceedsCount = currentChunk.count >= Swift.max(1, maxRecords)
+            let exceedsBytes = !currentChunk.isEmpty && (currentBytes + separatorBytes + recordBytes) > Swift.max(1, maxBytes)
+
+            if exceedsCount || exceedsBytes {
+                chunks.append(currentChunk)
+                currentChunk = []
+                currentBytes = 2
+            }
+
+            currentChunk.append(record)
+            currentBytes += recordBytes + (currentChunk.count > 1 ? 1 : 0)
+        }
+
+        if !currentChunk.isEmpty {
+            chunks.append(currentChunk)
+        }
+
+        return chunks
     }
 }
 

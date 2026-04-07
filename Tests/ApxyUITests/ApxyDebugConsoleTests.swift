@@ -1,10 +1,12 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import ApxyCore
 @testable import ApxyUI
 
+@Suite(.serialized)
 struct ApxyDebugConsoleTests {
-    @Test func filterMatchesStatusMethodHostSessionAndSearch() {
+    @Test func filterMatchesStatusMethodSessionAndSearch() {
         let records = [
             makeRecord(
                 id: "one",
@@ -30,7 +32,6 @@ struct ApxyDebugConsoleTests {
                 searchText: "denied",
                 status: .failures,
                 sessionID: "session-b",
-                host: "auth.example.com",
                 method: "POST"
             )
         )
@@ -168,7 +169,6 @@ struct ApxyDebugConsoleTests {
                 viewModel.totalRecordCount,
                 viewModel.visibleRecordCount,
                 viewModel.failureCount,
-                viewModel.hosts,
                 viewModel.methods,
                 viewModel.sessions.map(\.id),
                 viewModel.selectedRecord?.id
@@ -178,34 +178,9 @@ struct ApxyDebugConsoleTests {
         #expect(state.0 == 2)
         #expect(state.1 == 2)
         #expect(state.2 == 1)
-        #expect(state.3 == ["api.example.com", "auth.example.com"])
-        #expect(state.4 == ["GET", "POST"])
-        #expect(state.5 == ["session-a", "session-b"])
-        #expect(state.6 == "newer")
-    }
-
-    @Test func clearRemovesRecordsAndSelectionImmediately() async throws {
-        let store = makeStore()
-        await store.append(makeRecord(id: "one", statusCode: 200))
-
-        let viewModel = await MainActor.run {
-            ApxyDebugConsoleViewModel(store: store)
-        }
-
-        try await waitUntil {
-            await MainActor.run { viewModel.records.count == 1 }
-        }
-
-        await MainActor.run {
-            viewModel.clear()
-        }
-
-        let state = await MainActor.run {
-            (viewModel.records.isEmpty, viewModel.selectedRecord == nil, viewModel.totalRecordCount)
-        }
-        #expect(state.0)
-        #expect(state.1)
-        #expect(state.2 == 0)
+        #expect(state.3 == ["GET", "POST"])
+        #expect(state.4 == ["session-a", "session-b"])
+        #expect(state.5 == "newer")
     }
 
     @Test func viewModelHighlightsOnlyNewlyInsertedRecords() async throws {
@@ -238,13 +213,11 @@ struct ApxyDebugConsoleTests {
         viewModel.searchText = "denied"
         viewModel.status = .failures
         viewModel.selectedSessionID = "session-a"
-        viewModel.selectedHost = "api.example.com"
         viewModel.selectedMethod = "POST"
 
         #expect(viewModel.activeFilters == [
             "Failures",
             "Session session-",
-            "api.example.com",
             "POST",
             "\"denied\""
         ])
@@ -258,14 +231,12 @@ struct ApxyDebugConsoleTests {
         viewModel.searchText = "denied"
         viewModel.status = .failures
         viewModel.selectedSessionID = "session-a"
-        viewModel.selectedHost = "api.example.com"
         viewModel.selectedMethod = "POST"
 
-        viewModel.clearFilter(.host)
+        viewModel.clearFilter(.method)
 
-        #expect(viewModel.selectedHost == nil)
+        #expect(viewModel.selectedMethod == nil)
         #expect(viewModel.selectedSessionID == "session-a")
-        #expect(viewModel.selectedMethod == "POST")
         #expect(viewModel.status == .failures)
         #expect(viewModel.searchText == "denied")
     }
@@ -275,23 +246,21 @@ struct ApxyDebugConsoleTests {
             searchText: "denied",
             status: .failures,
             selectedSessionID: "session-a",
-            selectedHost: "api.example.com",
             selectedMethod: "POST"
         )
 
-        filterState.clear(.host)
+        filterState.clear(.method)
 
-        #expect(filterState.selectedHost == nil)
+        #expect(filterState.selectedMethod == nil)
         #expect(filterState.selectedSessionID == "session-a")
-        #expect(filterState.selectedMethod == "POST")
         #expect(filterState.status == .failures)
         #expect(filterState.searchText == "denied")
     }
 
     @Test func resetFiltersClearsStructuredStateAndRestoresVisibleRecords() async throws {
         let store = makeStore()
-        await store.append(makeRecord(id: "one", host: "api.example.com", statusCode: 200))
-        await store.append(makeRecord(id: "two", host: "auth.example.com", statusCode: 500))
+        await store.append(makeRecord(id: "one", method: "GET", host: "api.example.com", statusCode: 200))
+        await store.append(makeRecord(id: "two", method: "POST", host: "auth.example.com", statusCode: 500))
 
         let viewModel = await MainActor.run {
             ApxyDebugConsoleViewModel(store: store)
@@ -304,7 +273,7 @@ struct ApxyDebugConsoleTests {
         await MainActor.run {
             viewModel.searchText = "failed"
             viewModel.status = .failures
-            viewModel.selectedHost = "auth.example.com"
+            viewModel.selectedMethod = "POST"
         }
 
         let filteredState = await MainActor.run {
@@ -321,7 +290,6 @@ struct ApxyDebugConsoleTests {
             (
                 viewModel.searchText,
                 viewModel.status,
-                viewModel.selectedHost,
                 viewModel.selectedMethod,
                 viewModel.selectedSessionID,
                 viewModel.records.map(\.id),
@@ -332,9 +300,8 @@ struct ApxyDebugConsoleTests {
         #expect(resetState.1 == .all)
         #expect(resetState.2 == nil)
         #expect(resetState.3 == nil)
-        #expect(resetState.4 == nil)
-        #expect(resetState.5 == ["two", "one"])
-        #expect(resetState.6 == 2)
+        #expect(resetState.4 == ["two", "one"])
+        #expect(resetState.5 == 2)
     }
 
     @Test func resetFiltersRestoresVisibleRecordsAndKeepsValidSelection() async throws {
@@ -381,34 +348,6 @@ struct ApxyDebugConsoleTests {
         #expect(state.4 == "failure")
     }
 
-    @Test func prepareExportProducesShareableURL() async throws {
-        let store = makeStore()
-        await store.append(makeRecord(id: "export"))
-
-        let viewModel = await MainActor.run {
-            ApxyDebugConsoleViewModel(store: store)
-        }
-
-        try await waitUntil {
-            await MainActor.run { viewModel.records.count == 1 }
-        }
-
-        await MainActor.run {
-            viewModel.prepareExport()
-        }
-
-        let exportURL = try await waitUntilValue {
-            await MainActor.run { viewModel.exportURL }
-        }
-        let exportData = try Data(contentsOf: exportURL)
-
-        #expect(exportData.isEmpty == false)
-        let exportText = String(decoding: exportData, as: UTF8.self)
-        #expect(exportText.contains("\"id\" : \"export\""))
-        let exportError = await MainActor.run { viewModel.exportError }
-        #expect(exportError == nil)
-    }
-
     @Test func derivedStateReconcilesSelectionToVisibleRecords() {
         let records = [
             makeRecord(id: "one", statusCode: 200),
@@ -416,14 +355,88 @@ struct ApxyDebugConsoleTests {
         ]
         let derivedState = ApxyDebugConsoleDerivedState.make(
             snapshot: ApxyDebugSnapshot(records: records, sessions: []),
+            scope: .all,
             filterState: ApxyDebugConsoleFilterState(status: .failures),
-            selectedRecordID: "one",
-            isClearing: false
+            selectedRecordID: "one"
         )
 
         #expect(derivedState.records.map(\.id) == ["two"])
         #expect(derivedState.selectedRecordID == "two")
         #expect(derivedState.selectedRecord?.id == "two")
+    }
+
+    @Test func derivedStateScopesLiveTrafficToNewestSession() {
+        let olderRecord = makeRecord(
+            id: "older",
+            sessionID: "session-a",
+            capturedAt: Date(timeIntervalSince1970: 10)
+        )
+        let newerRecord = makeRecord(
+            id: "newer",
+            sessionID: "session-b",
+            capturedAt: Date(timeIntervalSince1970: 20)
+        )
+        let sessions = [
+            ApxyDebugSession(
+                id: "session-b",
+                startedAt: Date(timeIntervalSince1970: 18),
+                lastEventAt: Date(timeIntervalSince1970: 20),
+                requestCount: 1,
+                failureCount: 0
+            ),
+            ApxyDebugSession(
+                id: "session-a",
+                startedAt: Date(timeIntervalSince1970: 8),
+                lastEventAt: Date(timeIntervalSince1970: 10),
+                requestCount: 1,
+                failureCount: 0
+            )
+        ]
+
+        let derivedState = ApxyDebugConsoleDerivedState.make(
+            snapshot: ApxyDebugSnapshot(records: [newerRecord, olderRecord], sessions: sessions),
+            scope: .activeSession,
+            filterState: .init(),
+            selectedRecordID: nil
+        )
+
+        #expect(derivedState.records.map(\.id) == ["newer"])
+        #expect(derivedState.totalRecordCount == 1)
+        #expect(derivedState.selectedRecord?.id == "newer")
+    }
+
+    @Test func scopedViewModelFiltersToSelectedSessionAndKeepsSharedRequestFilters() async throws {
+        let store = makeStore()
+        await store.append(makeRecord(id: "session-a-success", host: "api.example.com", sessionID: "session-a", statusCode: 200))
+        await store.append(makeRecord(id: "session-a-failure", host: "auth.example.com", sessionID: "session-a", statusCode: 500))
+        await store.append(makeRecord(id: "session-b-failure", host: "auth.example.com", sessionID: "session-b", statusCode: 500))
+
+        let viewModel = await MainActor.run {
+            ApxyDebugConsoleViewModel(store: store, scope: .session("session-a"))
+        }
+
+        try await waitUntil {
+            await MainActor.run { viewModel.records.count == 2 }
+        }
+
+        await MainActor.run {
+            viewModel.status = .failures
+            viewModel.selectedSessionID = "session-b"
+        }
+
+        let state = await MainActor.run {
+            (
+                viewModel.records.map(\.id),
+                viewModel.totalRecordCount,
+                viewModel.visibleRecordCount,
+                viewModel.selectedSessionID
+            )
+        }
+
+        #expect(state.0 == ["session-a-failure"])
+        #expect(state.1 == 2)
+        #expect(state.2 == 1)
+        #expect(state.3 == nil)
     }
 
     @Test func viewModelPreservesVisibleSelectionWhenSnapshotAddsMatchingRecord() async throws {
@@ -461,52 +474,24 @@ struct ApxyDebugConsoleTests {
         #expect(selectionAfterUpdate.2 == "one")
     }
 
-    @Test func prepareExportExportsOnlyVisibleFilteredRecords() async throws {
-        let store = makeStore()
-        await store.append(makeRecord(id: "success", statusCode: 200))
-        await store.append(makeRecord(id: "failure", statusCode: 500))
-
-        let viewModel = await MainActor.run {
-            ApxyDebugConsoleViewModel(store: store)
-        }
-
-        try await waitUntil {
-            await MainActor.run { viewModel.records.count == 2 }
-        }
-
-        await MainActor.run {
-            viewModel.status = .failures
-            viewModel.prepareExport()
-        }
-
-        let exportURL = try await waitUntilValue {
-            await MainActor.run { viewModel.exportURL }
-        }
-        let exportData = try Data(contentsOf: exportURL)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let exportedRecords = try decoder.decode([ApxyDebugRecord].self, from: exportData)
-
-        #expect(exportedRecords.map(\.id) == ["failure"])
-    }
-
-    @Test @MainActor func navigationModelPushesStableCompactRouteAndPrunesMissingRecord() {
-        let navigation = ApxyDebugNavigationModel()
+    @Test @MainActor func navigationModelPresentsCompactDetailAndPrunesMissingRecord() {
+        let navigation = ApxyDebugNavigationCoordinator()
 
         navigation.showRecord("one", usesCompactNavigation: true)
 
-        #expect(navigation.compactPath == [.record("one")])
         #expect(navigation.compactRecordID == "one")
+        #expect(navigation.isShowingCompactDetail == true)
 
         let remainingRecords = [makeRecord(id: "two")]
         let reconciledSelection = navigation.reconcile(records: remainingRecords, selectedRecordID: nil)
 
-        #expect(navigation.compactPath.isEmpty)
+        #expect(navigation.compactRecordID == nil)
+        #expect(navigation.isShowingCompactDetail == false)
         #expect(reconciledSelection == "two")
     }
 
     @Test @MainActor func navigationModelReconcilesRegularSelectionToVisibleRecords() {
-        let navigation = ApxyDebugNavigationModel()
+        let navigation = ApxyDebugNavigationCoordinator()
         let records = [
             makeRecord(id: "one", statusCode: 200),
             makeRecord(id: "two", statusCode: 500)
@@ -537,6 +522,104 @@ struct ApxyDebugConsoleTests {
             }
         }
         #expect(viewModel == nil)
+    }
+
+    @Test @MainActor func runtimeSettingsViewModelReflectsAndAppliesActiveConfig() {
+        Apxy.stop()
+        Apxy.start()
+
+        let viewModel = ApxyDebugRuntimeSettingsViewModel()
+        #expect(viewModel.activeSummary.contains("local-only"))
+
+        viewModel.serverURL = "http://127.0.0.1:8083"
+        viewModel.flushIntervalText = "4.5"
+        viewModel.capturedDomainsText = "api.example.com, *.example.com"
+        viewModel.applyChanges()
+
+        #expect(Apxy.activeRuntimeConfiguration == ApxyRuntimeConfiguration(
+            serverURL: "http://127.0.0.1:8083",
+            flushInterval: 4.5,
+            capturedDomains: ["api.example.com", "*.example.com"]
+        ))
+        #expect(viewModel.activeSummary.contains("http://127.0.0.1:8083"))
+
+        Apxy.stop()
+    }
+
+    @Test @MainActor func runtimeSettingsViewModelRejectsInvalidFlushInterval() {
+        Apxy.stop()
+        Apxy.start()
+
+        let viewModel = ApxyDebugRuntimeSettingsViewModel()
+        viewModel.flushIntervalText = "zero"
+        viewModel.applyChanges()
+
+        #expect(viewModel.applyStatus == "Enter a valid flush interval (> 0).")
+        #expect(Apxy.activeRuntimeConfiguration == ApxyRuntimeConfiguration(
+            serverURL: nil,
+            flushInterval: 2.0,
+            capturedDomains: nil
+        ))
+
+        Apxy.stop()
+    }
+
+    @Test func runtimeSettingsViewModelClearsDebugStoreData() async throws {
+        let store = makeStore()
+        await store.append(makeRecord(id: "one", sessionID: "session-a"))
+        await store.append(makeRecord(id: "two", sessionID: "session-b"))
+
+        let consoleViewModel = await MainActor.run {
+            ApxyDebugConsoleViewModel(store: store)
+        }
+
+        try await waitUntil {
+            await MainActor.run { consoleViewModel.records.count == 2 }
+        }
+
+        let settingsViewModel = await MainActor.run {
+            ApxyDebugRuntimeSettingsViewModel(debugStore: store)
+        }
+
+        await MainActor.run {
+            settingsViewModel.clearAllData()
+        }
+
+        try await waitUntil {
+            await MainActor.run {
+                consoleViewModel.records.isEmpty
+                    && settingsViewModel.applyStatus == "Cleared all captured sessions and requests."
+                    && settingsViewModel.applyStatusKind == .success
+                    && settingsViewModel.isClearingData == false
+            }
+        }
+    }
+
+    @Test func themeUsesWebsiteLightTokensAndDocumentedDarkTokens() {
+        let light = ApxyDebugTheme.tokens(for: .light)
+        let dark = ApxyDebugTheme.tokens(for: .dark)
+
+        #expect(light.backgroundPrimary == 0xFFFFFF)
+        #expect(light.backgroundSecondary == 0xF5F4ED)
+        #expect(light.accent == 0xD97757)
+        #expect(dark.backgroundPrimary == 0x0A0A0A)
+        #expect(dark.backgroundSecondary == 0x111111)
+        #expect(dark.accent == 0x3B82F6)
+    }
+
+    @Test func statusPresentationMapsToSemanticThemeTones() {
+        let success = ApxyDebugStatusPresentation.from(record: makeRecord(id: "success", statusCode: 204))
+        var failureRecord = makeRecord(id: "failure", statusCode: 500)
+        failureRecord.error = nil
+        let failure = ApxyDebugStatusPresentation.from(record: failureRecord)
+        let pending = ApxyDebugStatusPresentation.from(record: makeRecord(id: "pending", statusCode: 102))
+
+        #expect(success.tone == .success)
+        #expect(success.iconName == "checkmark.circle.fill")
+        #expect(failure.tone == .error)
+        #expect(failure.iconName == "exclamationmark.triangle.fill")
+        #expect(pending.tone == .warning)
+        #expect(pending.iconName == "clock.fill")
     }
 
     private func waitUntil(
@@ -596,6 +679,7 @@ struct ApxyDebugConsoleTests {
         method: String = "GET",
         host: String = "api.example.com",
         sessionID: String = "session-a",
+        capturedAt: Date = Date(),
         statusCode: Int = 200,
         body: Data? = Data("{\"hello\":\"world\"}".utf8),
         requestHeaders: [String: String] = ["Accept": "application/json"],
@@ -607,7 +691,7 @@ struct ApxyDebugConsoleTests {
     ) -> ApxyDebugRecord {
         ApxyDebugRecord(
             id: id,
-            capturedAt: Date(),
+            capturedAt: capturedAt,
             sessionID: sessionID,
             request: .init(
                 method: method,

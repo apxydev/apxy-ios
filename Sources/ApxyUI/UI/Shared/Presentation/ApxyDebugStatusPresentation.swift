@@ -2,23 +2,27 @@ import SwiftUI
 import ApxyCore
 
 struct ApxyDebugStatusPresentation {
-    let color: Color
+    let tone: ApxyDebugThemeTone
     let iconName: String
+
+    func color(in theme: ApxyDebugThemePalette) -> Color {
+        tone.color(in: theme)
+    }
 
     static func from(record: ApxyDebugRecord) -> ApxyDebugStatusPresentation {
         if record.error != nil {
-            return ApxyDebugStatusPresentation(color: .red, iconName: "xmark.circle.fill")
+            return ApxyDebugStatusPresentation(tone: .error, iconName: "xmark.circle.fill")
         }
         if let statusCode = record.response?.statusCode {
             switch statusCode {
             case 200..<400:
-                return ApxyDebugStatusPresentation(color: .green, iconName: "checkmark.circle.fill")
+                return ApxyDebugStatusPresentation(tone: .success, iconName: "checkmark.circle.fill")
             case 400...:
-                return ApxyDebugStatusPresentation(color: .red, iconName: "exclamationmark.triangle.fill")
+                return ApxyDebugStatusPresentation(tone: .error, iconName: "exclamationmark.triangle.fill")
             default:
-                return ApxyDebugStatusPresentation(color: .orange, iconName: "clock.fill")
+                return ApxyDebugStatusPresentation(tone: .warning, iconName: "clock.fill")
             }
         }
-        return ApxyDebugStatusPresentation(color: .orange, iconName: "clock.fill")
+        return ApxyDebugStatusPresentation(tone: .warning, iconName: "clock.fill")
     }
 }

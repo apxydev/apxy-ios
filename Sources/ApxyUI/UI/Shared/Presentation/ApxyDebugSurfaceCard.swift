@@ -4,12 +4,14 @@ import SwiftUI
 struct ApxyDebugSurfaceCard<Content: View>: View {
     enum Style {
         case plain
-        case material
+        case elevated
+        case terminal
     }
 
     let style: Style
     var topAccent: Color? = nil
     @ViewBuilder let content: Content
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         style: Style = .plain,
@@ -22,15 +24,17 @@ struct ApxyDebugSurfaceCard<Content: View>: View {
     }
 
     var body: some View {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
         content
             .padding(ApxyDebugChrome.contentPadding)
             .background(
-                backgroundStyle,
+                backgroundStyle(theme: theme),
                 in: RoundedRectangle(cornerRadius: ApxyDebugChrome.cardCornerRadius, style: .continuous)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: ApxyDebugChrome.cardCornerRadius, style: .continuous)
-                    .strokeBorder(ApxyDebugChrome.subtleStroke)
+                    .strokeBorder(borderColor(theme: theme))
             }
             .overlay {
                 VStack(spacing: 0) {
@@ -48,22 +52,32 @@ struct ApxyDebugSurfaceCard<Content: View>: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: ApxyDebugChrome.cardCornerRadius, style: .continuous))
+            .shadow(color: theme.shadow, radius: style == .terminal ? 0 : 10, y: style == .terminal ? 0 : 4)
     }
 
-    private var backgroundStyle: AnyShapeStyle {
+    private func backgroundStyle(theme: ApxyDebugThemePalette) -> AnyShapeStyle {
         switch style {
         case .plain:
-            AnyShapeStyle(ApxyDebugChrome.subtleFill)
-        case .material:
-            AnyShapeStyle(.thinMaterial)
+            AnyShapeStyle(ApxyDebugChrome.subtleFill(in: theme))
+        case .elevated:
+            AnyShapeStyle(ApxyDebugChrome.elevatedFill(in: theme))
+        case .terminal:
+            AnyShapeStyle(ApxyDebugChrome.terminalFill(in: theme))
         }
+    }
+
+    private func borderColor(theme: ApxyDebugThemePalette) -> Color {
+        if topAccent != nil {
+            return theme.accentBorder
+        }
+        return ApxyDebugChrome.subtleStroke(in: theme)
     }
 }
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Surface Card iOS") {
-    ApxyDebugSurfaceCard(style: .material, topAccent: .blue) {
+#Preview("Surface Card Light iOS") {
+    ApxyDebugSurfaceCard(style: .elevated, topAccent: ApxyDebugTheme.palette(for: .light).accent) {
         VStack(alignment: .leading, spacing: 8) {
             Text("Preview Card")
                 .font(.headline)
@@ -75,11 +89,12 @@ struct ApxyDebugSurfaceCard<Content: View>: View {
     }
     .padding()
     .apxyPreviewComponent(.iOS)
+    .preferredColorScheme(.light)
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Surface Card macOS") {
-    ApxyDebugSurfaceCard(style: .material, topAccent: .blue) {
+#Preview("Surface Card Dark macOS") {
+    ApxyDebugSurfaceCard(style: .elevated, topAccent: ApxyDebugTheme.palette(for: .dark).accent) {
         VStack(alignment: .leading, spacing: 8) {
             Text("Preview Card")
                 .font(.headline)
@@ -91,5 +106,6 @@ struct ApxyDebugSurfaceCard<Content: View>: View {
     }
     .padding()
     .apxyPreviewComponent(.macOS)
+    .preferredColorScheme(.dark)
 }
 #endif

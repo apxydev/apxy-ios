@@ -12,62 +12,201 @@ struct ApxyDebugRecordHeaderCard: View {
     let statusColor: Color
     let durationText: String
     let url: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ApxyDebugSurfaceCard(style: .plain) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    ApxyDebugStatusDot(color: statusColor)
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
 
-                    Label(statusText, systemImage: statusSymbol)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .labelStyle(.titleAndIcon)
+        ApxyDebugSurfaceCard(style: .elevated, topAccent: statusColor) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: statusSymbol)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                        .frame(width: 44, height: 44)
+                        .background(statusColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                    Spacer(minLength: 12)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(host)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(theme.textPrimary)
+                            .lineLimit(2)
 
-                    Text(durationText)
-                        .font(.system(.caption, design: .monospaced).monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        Text(path)
+                            .font(.subheadline)
+                            .foregroundStyle(theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
                 }
 
-                HStack(spacing: 8) {
-                    capsuleLabel(method, tint: .accentColor)
-                    if isMocked {
-                        capsuleLabel("Mock", tint: .secondary)
+                ViewThatFits {
+                    HStack(spacing: 8) {
+                        headerBadge(title: statusText, systemImage: statusSymbol, color: statusColor)
+                        capsuleLabel(method, tone: .accent)
+                        if isMocked {
+                            capsuleLabel("Mocked", tone: .warning)
+                        }
+                        capsuleLabel(isTLS ? "TLS" : "Standard", tone: isTLS ? .success : .muted)
                     }
-                    if isTLS {
-                        capsuleLabel("TLS", tint: .green)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        headerBadge(title: statusText, systemImage: statusSymbol, color: statusColor)
+                        HStack(spacing: 8) {
+                            capsuleLabel(method, tone: .accent)
+                            if isMocked {
+                                capsuleLabel("Mocked", tone: .warning)
+                            }
+                            capsuleLabel(isTLS ? "TLS" : "Standard", tone: isTLS ? .success : .muted)
+                        }
                     }
-                    Spacer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                Text(host)
-                    .font(.title3.bold())
-                    .lineLimit(2)
-
-                Text(path)
+                Text(summaryDescription)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                    .foregroundStyle(theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                Divider()
-                    .overlay(ApxyDebugChrome.subtleStroke)
+                ViewThatFits {
+                    HStack(spacing: 12) {
+                        summaryMetric(
+                            title: "Method",
+                            value: method,
+                            systemImage: "arrow.left.arrow.right",
+                            tint: theme.accent,
+                            theme: theme
+                        )
+                        summaryMetric(
+                            title: "Duration",
+                            value: durationText,
+                            systemImage: "timer",
+                            tint: theme.warning,
+                            theme: theme
+                        )
+                        summaryMetric(
+                            title: "Transport",
+                            value: transportSummary,
+                            systemImage: isTLS ? "lock.shield.fill" : "network",
+                            tint: isTLS ? theme.success : theme.textSecondary,
+                            theme: theme
+                        )
+                    }
 
-                Text(url)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                    VStack(spacing: 12) {
+                        summaryMetric(
+                            title: "Method",
+                            value: method,
+                            systemImage: "arrow.left.arrow.right",
+                            tint: theme.accent,
+                            theme: theme
+                        )
+                        summaryMetric(
+                            title: "Duration",
+                            value: durationText,
+                            systemImage: "timer",
+                            tint: theme.warning,
+                            theme: theme
+                        )
+                        summaryMetric(
+                            title: "Transport",
+                            value: transportSummary,
+                            systemImage: isTLS ? "lock.shield.fill" : "network",
+                            tint: isTLS ? theme.success : theme.textSecondary,
+                            theme: theme
+                        )
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Request URL", systemImage: "link")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.textSecondary)
+
+                    Text(url)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(theme.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(theme.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(theme.border)
+                        }
+                }
             }
         }
     }
 
-    private func capsuleLabel(_ title: String, tint: Color) -> some View {
-        Text(title)
+    private var summaryDescription: String {
+        let mockedSummary = isMocked ? "Mocked response." : "Live network request."
+        return "\(mockedSummary) Completed with status \(statusText) in \(durationText)."
+    }
+
+    private var transportSummary: String {
+        if isMocked {
+            return isTLS ? "Mock + TLS" : "Mock + Standard"
+        }
+
+        return isTLS ? "TLS" : "Standard"
+    }
+
+    private func headerBadge(title: String, systemImage: String, color: Color) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(color.opacity(0.12), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(color.opacity(0.28))
+            }
+    }
+
+    private func summaryMetric(
+        title: String,
+        value: String,
+        systemImage: String,
+        tint: Color,
+        theme: ApxyDebugThemePalette
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+
+            Text(value)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(theme.textPrimary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(theme.border)
+        }
+    }
+
+    private func capsuleLabel(_ title: String, tone: ApxyDebugThemeTone) -> some View {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+        let tint = tone.color(in: theme)
+
+        return Text(title)
             .font(.caption.bold())
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(tint.opacity(0.14), in: Capsule())
+            .background(tint.opacity(tone == .muted ? 0.08 : 0.14), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(tone == .muted ? theme.border : tint.opacity(0.35))
+            }
             .foregroundStyle(tint)
     }
 }
@@ -86,7 +225,7 @@ struct ApxyDebugRecordHeaderCard: View {
         path: record.request.currentPath ?? record.request.path,
         statusText: record.response.map { "\($0.statusCode)" } ?? "Pending",
         statusSymbol: presentation.iconName,
-        statusColor: presentation.color,
+        statusColor: presentation.color(in: ApxyDebugTheme.palette(for: .light)),
         durationText: ApxyDebugValueFormatters.duration(record.duration),
         url: record.request.currentURL ?? record.request.url
     )
@@ -107,7 +246,7 @@ struct ApxyDebugRecordHeaderCard: View {
         path: record.request.currentPath ?? record.request.path,
         statusText: record.response.map { "\($0.statusCode)" } ?? "Pending",
         statusSymbol: presentation.iconName,
-        statusColor: presentation.color,
+        statusColor: presentation.color(in: ApxyDebugTheme.palette(for: .dark)),
         durationText: ApxyDebugValueFormatters.duration(record.duration),
         url: record.request.currentURL ?? record.request.url
     )

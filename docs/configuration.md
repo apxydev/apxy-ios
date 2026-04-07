@@ -58,7 +58,7 @@ Default initializer:
 
 ```swift
 ApxyOptions(
-    transport: .auto,
+    transport: .http,
     enableInRelease: false,
     bufferSize: 100,
     flushInterval: 2.0,
@@ -88,6 +88,12 @@ public enum ApxyTransport {
 - `.http`: batch records and send on the flush loop
 - `.webSocket`: push records immediately over WebSocket
 - `.auto`: prefer WebSocket when available, otherwise fall back to HTTP
+
+Recommendation:
+
+- Use `.http` as the default remote mode for lower runtime overhead
+- Use `.webSocket` only when you explicitly need near-realtime desktop streaming
+- Avoid combining a remote `serverURL` with `debugConsole.isEnabled == true` unless you need both at the same time
 
 ## `enableInRelease`
 
@@ -301,6 +307,47 @@ Apxy.setUser(ApxyUser(id: "user-123", email: "dev@example.com", name: "Dev User"
 Apxy.setTag(key: "env", value: "staging")
 Apxy.setContext(key: "subscription", value: ["plan": "pro", "trial": false])
 ```
+
+## Runtime Reconfiguration
+
+You can update a running SDK instance without restarting the app:
+
+```swift
+Apxy.reconfigure(
+    ApxyRuntimeConfiguration(
+        serverURL: "http://192.168.1.5:8083",
+        flushInterval: 5.0,
+        capturedDomains: ["api.example.com", "*.example.com"]
+    )
+)
+```
+
+Read the active session-scoped values with:
+
+```swift
+let active = Apxy.activeRuntimeConfiguration
+```
+
+Notes:
+
+- runtime changes are session-only and are not persisted across restart
+- invalid `serverURL` input falls back to local-only mode immediately
+- the embedded `ApxyUI` debug console exposes the same fields in its runtime settings screen
+
+## Manual Session Sharing
+
+Local debug persistence now keeps session metadata as well as records. That lets you manually share older on-device sessions after switching to a valid `serverURL`.
+
+```swift
+let sessions = await Apxy.shareableLocalSessions()
+try await Apxy.shareLocalSession(id: sessions[0].id)
+```
+
+Notes:
+
+- this is for persisted older sessions, not the currently active live-managed session
+- manual sharing requires a valid active `serverURL`
+- sharing retries are safe because APXY Core now treats the uploaded SDK session as an idempotent upsert
 
 ## Custom `URLSessionConfiguration`
 

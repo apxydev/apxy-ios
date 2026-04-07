@@ -3,59 +3,51 @@ import ApxyCore
 
 @available(iOS 16.0, macOS 13.0, *)
 public struct ApxyDebugConsoleView: View {
-    @StateObject var screenModel: ApxyDebugConsoleScreenModel
-    @State var isShowingClearConfirmation = false
-#if os(iOS)
-    @Environment(\.horizontalSizeClass) var horizontalSizeClass
-#endif
+    private let store: ApxyDebugStore
+    @State private var selectedTab: Tab = .liveTraffic
+    @StateObject private var settingsViewModel: ApxyDebugRuntimeSettingsViewModel
+    @Environment(\.colorScheme) private var colorScheme
+
+    private enum Tab: Hashable {
+        case liveTraffic
+        case sessions
+        case settings
+    }
 
     public init(store: ApxyDebugStore) {
-        _screenModel = StateObject(wrappedValue: ApxyDebugConsoleScreenModel(store: store))
+        self.store = store
+        _settingsViewModel = StateObject(wrappedValue: ApxyDebugRuntimeSettingsViewModel(debugStore: store))
     }
 
     public var body: some View {
-        Group {
-            if usesCompactNavigation {
-                compactBody
-            } else {
-                regularBody
+        TabView(selection: $selectedTab) {
+            ApxyDebugRequestsView(store: store, scope: .activeSession)
+                .tabItem {
+                    Label("Live Traffic", systemImage: "bolt.horizontal.circle")
+                }
+                .tag(Tab.liveTraffic)
+
+            ApxyDebugSessionsView(store: store)
+                .tabItem {
+                    Label("Sessions", systemImage: "square.stack.3d.up")
+                }
+                .tag(Tab.sessions)
+
+            NavigationStack {
+                ApxyDebugRuntimeSettingsView(viewModel: settingsViewModel)
             }
-        }
-        .onAppear {
-            screenModel.reconcileNavigation(usesCompactNavigation: usesCompactNavigation)
-        }
-        .onChange(of: screenModel.records.map(\.id)) { _ in
-            screenModel.reconcileNavigation(usesCompactNavigation: usesCompactNavigation)
-        }
-        .onChange(of: screenModel.selectedRecordID) { _ in
-            screenModel.syncRegularSelectionIfNeeded(usesCompactNavigation: usesCompactNavigation)
-        }
-        .onChange(of: screenModel.compactPath) { _ in
-            screenModel.syncCompactSelectionIfNeeded(usesCompactNavigation: usesCompactNavigation)
-        }
-        .alert("Export Failed", isPresented: Binding(get: {
-            screenModel.exportError != nil
-        }, set: { newValue in
-            if !newValue {
-                screenModel.dismissExportError()
+            .tabItem {
+                Label("Settings", systemImage: "gearshape")
             }
-        })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(screenModel.exportError ?? "")
+            .tag(Tab.settings)
         }
-        .confirmationDialog(
-            "Clear all captured requests?",
-            isPresented: $isShowingClearConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete All Requests", role: .destructive) {
-                screenModel.clearRecords()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes every captured request from the local Apxy console.")
-        }
+        .background(theme.canvas.ignoresSafeArea())
+        .tint(theme.accent)
+        .apxyVisibleNavigationBar()
+    }
+
+    var theme: ApxyDebugThemePalette {
+        ApxyDebugTheme.palette(for: colorScheme)
     }
 }
 
@@ -79,19 +71,21 @@ public struct ApxyDebugConsoleContainer: View {
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Console Screen iOS") {
+#Preview("Console Screen Light iOS") {
     ApxyDebugPreviewStoreContainer { store in
         ApxyDebugConsoleView(store: store)
     }
     .apxyPreviewScreen(.iOS)
+    .preferredColorScheme(.light)
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Console Screen macOS") {
+#Preview("Console Screen Dark macOS") {
     ApxyDebugPreviewStoreContainer { store in
         ApxyDebugConsoleView(store: store)
     }
     .apxyPreviewScreen(.macOS)
+    .preferredColorScheme(.dark)
 }
 
 @available(iOS 17.0, macOS 14.0, *)

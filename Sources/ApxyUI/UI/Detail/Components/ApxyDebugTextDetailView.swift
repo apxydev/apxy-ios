@@ -5,6 +5,7 @@ struct ApxyDebugTextDetailView: View {
     let title: String
     let text: String
     let emptyMessage: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -13,14 +14,9 @@ struct ApxyDebugTextDetailView: View {
             } else {
                 List {
                     Section {
-                        ScrollView([.vertical, .horizontal]) {
-                            Text(text)
-                                .font(.system(.body, design: .monospaced))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 4)
-                        }
+                        codeBlock
                     }
+                    .listRowBackground(Color.clear)
                 }
             }
         }
@@ -37,14 +33,32 @@ struct ApxyDebugTextDetailView: View {
         }
     }
 
+    private var codeBlock: some View {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
+        return ApxyDebugSurfaceCard(style: .terminal) {
+            VStack(alignment: .leading, spacing: 0) {
+                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                    .fill(theme.terminalBar)
+                    .frame(height: 10)
+                    .padding(.bottom, 12)
+
+                ScrollView([.vertical, .horizontal]) {
+                    Text(text)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(theme.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var emptyContent: some View {
-        if #available(iOS 17.0, macOS 14.0, *) {
-            ContentUnavailableView(emptyMessage, systemImage: "doc.text")
-        } else {
-            ApxyDebugPlaceholderPanel(title: title, systemImage: "doc.text", message: emptyMessage)
-                .padding()
-        }
+        ApxyDebugPlaceholderPanel(title: title, systemImage: "doc.text", message: emptyMessage)
+            .padding()
     }
 }
 

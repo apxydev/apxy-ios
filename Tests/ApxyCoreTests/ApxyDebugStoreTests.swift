@@ -93,6 +93,149 @@ struct ApxyDebugStoreTests {
         #expect(sessionA?.failureCount == 1)
     }
 
+    @Test func sessionMetadataPersistsAndRestores() async throws {
+        let fileURL = makeStoreURL()
+        let store = ApxyDebugStore(
+            options: ApxyDebugOptions(
+                isEnabled: true,
+                memoryRecordLimit: 10,
+                persistedRecordLimit: 10,
+                storeURL: fileURL
+            )
+        )
+
+        let client = SDKClient(
+            id: "client-1",
+            platform: "ios",
+            deviceModel: "iPhone",
+            osName: "iOS",
+            osVersion: "18.0",
+            appBundleID: "dev.apxy.app",
+            appVersion: "1.0",
+            appBuild: "1",
+            sdkVersion: "0.1.0",
+            firstSeenAt: Date(timeIntervalSince1970: 100),
+            lastSeenAt: Date(timeIntervalSince1970: 100)
+        )
+        let context = ClientContext(
+            userID: "user-1",
+            userEmail: "dev@example.com",
+            userName: "Dev",
+            networkType: "wifi",
+            tags: ["env": "staging"],
+            context: ["plan": "pro"]
+        )
+
+        await store.beginSession(
+            id: "session-a",
+            name: "SDK 2026-04-06 10:00:00",
+            createdAt: Date(timeIntervalSince1970: 100),
+            sdkClient: client,
+            context: context,
+            serverURL: nil,
+            isLiveManaged: false
+        )
+        await store.append(makeRecord(id: "one", sessionID: "session-a"))
+        await store.flush()
+
+        let restoredStore = ApxyDebugStore(
+            options: ApxyDebugOptions(
+                isEnabled: true,
+                memoryRecordLimit: 10,
+                persistedRecordLimit: 10,
+                storeURL: fileURL
+            )
+        )
+        let restoredSession = try #require(await restoredStore.localSessions().first)
+
+        #expect(restoredSession.id == "session-a")
+        #expect(restoredSession.sdkClient == client)
+        #expect(restoredSession.context == context)
+        #expect(restoredSession.requestCount == 1)
+        #expect(restoredSession.syncState == .localOnly)
+    }
+
+    @Test func shareableSessionsExcludeLiveManagedSessions() async throws {
+        let store = ApxyDebugStore(
+            options: ApxyDebugOptions(
+                isEnabled: true,
+                memoryRecordLimit: 10,
+                persistedRecordLimit: 10,
+                storeURL: makeStoreURL()
+            )
+        )
+
+        let client = SDKClient(
+            id: "client-1",
+            platform: "ios",
+            deviceModel: "iPhone",
+            osName: "iOS",
+            osVersion: "18.0",
+            appBundleID: "dev.apxy.app",
+            appVersion: "1.0",
+            appBuild: "1",
+            sdkVersion: "0.1.0",
+            firstSeenAt: Date(timeIntervalSince1970: 100),
+            lastSeenAt: Date(timeIntervalSince1970: 100)
+        )
+
+        await store.beginSession(
+            id: "local-session",
+            name: "Local",
+            createdAt: Date(timeIntervalSince1970: 100),
+            sdkClient: client,
+            context: ClientContext(),
+            serverURL: nil,
+            isLiveManaged: false
+        )
+        await store.beginSession(
+            id: "live-session",
+            name: "Live",
+            createdAt: Date(timeIntervalSince1970: 200),
+            sdkClient: client,
+            context: ClientContext(),
+            serverURL: "http://127.0.0.1:8083",
+            isLiveManaged: true
+        )
+
+        let shareableIDs = await store.shareableLocalSessions().map(\.id)
+        #expect(shareableIDs == ["local-session"])
+    }
+
+    @Test func deleteSessionRemovesRecordsAndPersistence() async throws {
+        let fileURL = makeStoreURL()
+        let store = ApxyDebugStore(
+            options: ApxyDebugOptions(
+                isEnabled: true,
+                memoryRecordLimit: 10,
+                persistedRecordLimit: 10,
+                storeURL: fileURL
+            )
+        )
+
+        await store.append(makeRecord(id: "one", sessionID: "session-a"))
+        await store.append(makeRecord(id: "two", sessionID: "session-b"))
+        await store.deleteSession(id: "session-a")
+        await store.flush()
+
+        let snapshot = await store.snapshot()
+        #expect(snapshot.sessions.map(\.id) == ["session-b"])
+        #expect(snapshot.records.map(\.id) == ["two"])
+
+        let restoredStore = ApxyDebugStore(
+            options: ApxyDebugOptions(
+                isEnabled: true,
+                memoryRecordLimit: 10,
+                persistedRecordLimit: 10,
+                storeURL: fileURL
+            )
+        )
+        let restoredSnapshot = await restoredStore.snapshot()
+
+        #expect(restoredSnapshot.sessions.map(\.id) == ["session-b"])
+        #expect(restoredSnapshot.records.map(\.id) == ["two"])
+    }
+
     @Test func transportFailuresWithoutHTTPResponseDoNotCreateSyntheticResponse() {
         let record = makeNetworkRecord(
             id: "offline",

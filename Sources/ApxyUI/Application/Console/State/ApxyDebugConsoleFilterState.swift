@@ -4,7 +4,6 @@ struct ApxyDebugConsoleFilterState: Equatable {
     var searchText: String = ""
     var status: ApxyDebugStatusFilter = .all
     var selectedSessionID: String?
-    var selectedHost: String?
     var selectedMethod: String?
 
     var activeFilterItems: [ApxyDebugConsoleActiveFilterItem] {
@@ -14,9 +13,6 @@ struct ApxyDebugConsoleFilterState: Equatable {
         }
         if let selectedSessionID, !selectedSessionID.isEmpty {
             items.append(.init(kind: .session, title: "Session \(String(selectedSessionID.prefix(8)))"))
-        }
-        if let selectedHost, !selectedHost.isEmpty {
-            items.append(.init(kind: .host, title: selectedHost))
         }
         if let selectedMethod, !selectedMethod.isEmpty {
             items.append(.init(kind: .method, title: selectedMethod))
@@ -33,7 +29,6 @@ struct ApxyDebugConsoleFilterState: Equatable {
             searchText: searchText,
             status: status,
             sessionID: selectedSessionID,
-            host: selectedHost,
             method: selectedMethod
         )
     }
@@ -44,8 +39,6 @@ struct ApxyDebugConsoleFilterState: Equatable {
             status = .all
         case .session:
             selectedSessionID = nil
-        case .host:
-            selectedHost = nil
         case .method:
             selectedMethod = nil
         case .search:

@@ -7,13 +7,14 @@ struct ApxyDebugRecordDetailView: View {
 
     @State private var toastMessage: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         List {
             Section {
                 headerCard
             }
-            .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 8, trailing: 0))
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowBackground(Color.clear)
 
             Section("Summary") {
@@ -33,10 +34,11 @@ struct ApxyDebugRecordDetailView: View {
                 }
                 if let sessionID = record.sessionID, !sessionID.isEmpty {
                     LabeledContent("Session") {
-                        Text(String(sessionID.prefix(8)))
+                        Text(ApxyDebugValueFormatters.sessionPrefix(sessionID))
                     }
                 }
             }
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
 
             ForEach(requestSections) { requestSection in
                 Section(requestSection.sectionTitle) {
@@ -51,12 +53,10 @@ struct ApxyDebugRecordDetailView: View {
                     }
                     selectableValue(title: "URL", value: requestSection.url)
 
-                    NavigationLink {
-                        makeDestination(for: .requestHeaders(requestSection.kind))
-                    } label: {
+                    NavigationLink(value: ApxyDebugInspectorRoute.requestHeaders(requestSection.kind)) {
                         ApxyDebugInspectorRow(
                             icon: "list.bullet.rectangle.portrait.fill",
-                            tint: .secondary,
+                            tint: theme.textSecondary,
                             title: requestSection.headersTitle,
                             detail: "\(requestSection.headers.count)",
                             isEnabled: !requestSection.headers.isEmpty
@@ -64,28 +64,25 @@ struct ApxyDebugRecordDetailView: View {
                     }
                     .disabled(requestSection.headers.isEmpty)
 
-                    NavigationLink {
-                        makeDestination(for: .requestBody(requestSection.kind))
-                    } label: {
+                    NavigationLink(value: ApxyDebugInspectorRoute.requestBody(requestSection.kind)) {
                         ApxyDebugInspectorRow(
                             icon: "arrow.up.circle.fill",
-                            tint: .blue,
+                            tint: theme.accent,
                             title: requestSection.bodyTitle,
                             detail: requestBodySummary,
                             isEnabled: true
                         )
                     }
                 }
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
 
             Section("Cookies") {
                 ForEach(requestSections) { requestSection in
-                    NavigationLink {
-                        makeDestination(for: .requestCookies(requestSection.kind))
-                    } label: {
+                    NavigationLink(value: ApxyDebugInspectorRoute.requestCookies(requestSection.kind)) {
                         ApxyDebugInspectorRow(
                             icon: "lock.square.stack.fill",
-                            tint: .secondary,
+                            tint: theme.textSecondary,
                             title: requestSection.cookiesTitle,
                             detail: "\(requestSection.cookies.count)",
                             isEnabled: !requestSection.cookies.isEmpty
@@ -94,12 +91,10 @@ struct ApxyDebugRecordDetailView: View {
                     .disabled(requestSection.cookies.isEmpty)
                 }
 
-                NavigationLink {
-                    makeDestination(for: .responseCookies)
-                } label: {
+                NavigationLink(value: ApxyDebugInspectorRoute.responseCookies) {
                     ApxyDebugInspectorRow(
                         icon: "lock.square.stack.fill",
-                        tint: .secondary,
+                        tint: theme.textSecondary,
                         title: "Response Cookies",
                         detail: "\(responseCookies.count)",
                         isEnabled: !responseCookies.isEmpty
@@ -107,6 +102,7 @@ struct ApxyDebugRecordDetailView: View {
                 }
                 .disabled(responseCookies.isEmpty)
             }
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
 
             Section("Response") {
                 if let response = record.response {
@@ -121,12 +117,10 @@ struct ApxyDebugRecordDetailView: View {
                         Text(responseBodySummary)
                     }
 
-                    NavigationLink {
-                        makeDestination(for: .responseHeaders)
-                    } label: {
+                    NavigationLink(value: ApxyDebugInspectorRoute.responseHeaders) {
                         ApxyDebugInspectorRow(
                             icon: "text.append",
-                            tint: .secondary,
+                            tint: theme.textSecondary,
                             title: "Response Headers",
                             detail: "\(response.headers.count)",
                             isEnabled: !response.headers.isEmpty
@@ -134,12 +128,10 @@ struct ApxyDebugRecordDetailView: View {
                     }
                     .disabled(response.headers.isEmpty)
 
-                    NavigationLink {
-                        makeDestination(for: .responseBody)
-                    } label: {
+                    NavigationLink(value: ApxyDebugInspectorRoute.responseBody) {
                         ApxyDebugInspectorRow(
                             icon: "arrow.down.circle.fill",
-                            tint: .indigo,
+                            tint: theme.accentHover,
                             title: "Response Body",
                             detail: responseBodySummary,
                             isEnabled: true
@@ -152,7 +144,7 @@ struct ApxyDebugRecordDetailView: View {
                         } label: {
                             ApxyDebugInspectorRow(
                                 icon: "curlybraces",
-                                tint: .indigo,
+                                tint: theme.accentHover,
                                 title: "Copy JSON",
                                 detail: "",
                                 isEnabled: true
@@ -162,9 +154,10 @@ struct ApxyDebugRecordDetailView: View {
                     }
                 } else {
                     Text("No response captured")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             }
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
 
             Section("Actions") {
                 Button {
@@ -172,7 +165,7 @@ struct ApxyDebugRecordDetailView: View {
                 } label: {
                     ApxyDebugInspectorRow(
                         icon: "terminal.fill",
-                        tint: .secondary,
+                        tint: theme.textSecondary,
                         title: "Copy cURL",
                         detail: ""
                     )
@@ -180,12 +173,10 @@ struct ApxyDebugRecordDetailView: View {
                 .buttonStyle(.plain)
 
                 if record.metrics != nil {
-                    NavigationLink {
-                        makeDestination(for: .metrics)
-                    } label: {
+                    NavigationLink(value: ApxyDebugInspectorRoute.metrics) {
                         ApxyDebugInspectorRow(
                             icon: "chart.xyaxis.line",
-                            tint: .orange,
+                            tint: theme.warning,
                             title: "Metrics Timeline",
                             detail: "\(record.metrics?.transactions.count ?? 0)"
                         )
@@ -193,21 +184,22 @@ struct ApxyDebugRecordDetailView: View {
                 }
 
                 if record.error != nil {
-                    NavigationLink {
-                        makeDestination(for: .error)
-                    } label: {
+                    NavigationLink(value: ApxyDebugInspectorRoute.error) {
                         ApxyDebugInspectorRow(
                             icon: "exclamationmark.octagon.fill",
-                            tint: .red,
+                            tint: theme.error,
                             title: "Error Details",
                             detail: ""
                         )
                     }
                 }
             }
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         }
         .modifier(ApxyDebugDetailListStyleModifier())
         .navigationTitle("Request Details")
+        .tint(theme.accent)
+        .apxyNavigationChrome(theme: theme, colorScheme: colorScheme)
         .overlay {
             VStack {
                 Spacer()
@@ -267,67 +259,6 @@ struct ApxyDebugRecordDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private func makeDestination(for destination: ApxyDebugInspectorDestination) -> some View {
-        switch destination {
-        case let .requestHeaders(kind):
-            let section = requestSection(for: kind)
-            ApxyDebugTextDetailView(
-                title: section.headersTitle,
-                text: ApxyDebugValueFormatters.headers(section.headers),
-                emptyMessage: "No headers"
-            )
-        case let .requestCookies(kind):
-            let section = requestSection(for: kind)
-            ApxyDebugTextDetailView(
-                title: section.cookiesTitle,
-                text: ApxyDebugCookiesFormatter.detailsText(for: section.cookies),
-                emptyMessage: "No cookies"
-            )
-        case let .requestBody(kind):
-            let section = requestSection(for: kind)
-            ApxyDebugBodyDetailView(
-                title: section.bodyTitle,
-                contentType: record.request.contentType,
-                size: requestBodySize,
-                presentation: requestBodyPresentation,
-                quickCopyTitle: canCopyRequestBody ? "Copy Body" : nil,
-                onQuickCopy: canCopyRequestBody ? {
-                    copyToClipboard(requestBodyText, message: "Request body copied")
-                } : nil
-            )
-        case .responseHeaders:
-            ApxyDebugTextDetailView(
-                title: "Response Headers",
-                text: ApxyDebugValueFormatters.headers(record.response?.headers ?? [:]),
-                emptyMessage: "No headers"
-            )
-        case .responseCookies:
-            ApxyDebugTextDetailView(
-                title: "Response Cookies",
-                text: ApxyDebugCookiesFormatter.detailsText(for: responseCookies),
-                emptyMessage: "No cookies"
-            )
-        case .responseBody:
-            ApxyDebugBodyDetailView(
-                title: "Response Body",
-                contentType: record.response?.contentType,
-                size: responseBodySize,
-                presentation: responseBodyPresentation,
-                quickCopyTitle: responseQuickCopyTitle,
-                onQuickCopy: responseQuickCopyAction
-            )
-        case .metrics:
-            metricsDetailView
-        case .error:
-            ApxyDebugTextDetailView(
-                title: "Error Details",
-                text: errorText,
-                emptyMessage: "No error details"
-            )
-        }
-    }
-
     private var headerCard: some View {
         ApxyDebugRecordHeaderCard(
             method: record.request.method,
@@ -351,124 +282,17 @@ struct ApxyDebugRecordDetailView: View {
         reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.3, bounce: 0.2)
     }
 
-    @ViewBuilder
-    private var metricsDetailView: some View {
-        if let metrics = record.metrics {
-            List {
-                Section("Task") {
-                    LabeledContent("Started") {
-                        Text(ApxyDebugValueFormatters.timestamp(metrics.taskInterval.start))
-                    }
-                    LabeledContent("Ended") {
-                        Text(ApxyDebugValueFormatters.timestamp(metrics.taskInterval.end))
-                    }
-                    LabeledContent("Redirects") {
-                        Text("\(metrics.redirectCount)")
-                    }
-                    LabeledContent("Transactions") {
-                        Text("\(metrics.transactions.count)")
-                    }
-                }
-
-                ForEach(metrics.transactions) { transaction in
-                    Section(transaction.fetchType.capitalized) {
-                        if let requestURL = transaction.requestURL {
-                            selectableValue(title: "Request URL", value: requestURL)
-                        }
-                        if let responseStatusCode = transaction.responseStatusCode {
-                            LabeledContent("Status") {
-                                Text("\(responseStatusCode)")
-                            }
-                        }
-                        if let networkProtocolName = transaction.networkProtocolName {
-                            LabeledContent("Protocol") {
-                                Text(networkProtocolName)
-                            }
-                        }
-                        if let localEndpoint = endpointText(address: transaction.localAddress, port: transaction.localPort) {
-                            LabeledContent("Local Endpoint") {
-                                Text(localEndpoint)
-                            }
-                        }
-                        if let remoteEndpoint = endpointText(address: transaction.remoteAddress, port: transaction.remotePort) {
-                            LabeledContent("Remote Endpoint") {
-                                Text(remoteEndpoint)
-                            }
-                        }
-                        LabeledContent("Reused Connection") {
-                            Text(transaction.reusedConnection ? "Yes" : "No")
-                        }
-                        LabeledContent("Proxy Connection") {
-                            Text(transaction.proxyConnection ? "Yes" : "No")
-                        }
-
-                        ForEach(timingRows(for: transaction), id: \.title) { row in
-                            LabeledContent(row.title) {
-                                Text(row.value)
-                            }
-                        }
-
-                        LabeledContent("Request Bytes") {
-                            Text(ApxyDebugValueFormatters.bytes(transaction.transfer.requestBodyBytesSent))
-                        }
-                        LabeledContent("Response Bytes") {
-                            Text(ApxyDebugValueFormatters.bytes(transaction.transfer.responseBodyBytesReceived))
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Metrics Timeline")
-        } else {
-            ApxyDebugTextDetailView(title: "Metrics Timeline", text: "", emptyMessage: "No task metrics captured")
-        }
-    }
-
     private func selectableValue(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
+        return VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
                 .bold()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Text(value)
+                .foregroundStyle(theme.textPrimary)
                 .textSelection(.enabled)
-        }
-    }
-
-    private func timingRows(
-        for transaction: ApxyDebugRecord.Metrics.Transaction
-    ) -> [(title: String, value: String)] {
-        var rows: [(String, String)] = []
-
-        func append(_ title: String, _ date: Date?) {
-            guard let date else { return }
-            rows.append((title, ApxyDebugValueFormatters.timestamp(date)))
-        }
-
-        append("Fetch Started", transaction.resourceFetchStart)
-        append("DNS Started", transaction.domainLookupStart)
-        append("DNS Ended", transaction.domainLookupEnd)
-        append("Connect Started", transaction.connectStart)
-        append("TLS Started", transaction.secureConnectionStart)
-        append("TLS Ended", transaction.secureConnectionEnd)
-        append("Connect Ended", transaction.connectEnd)
-        append("Request Started", transaction.requestStart)
-        append("Request Ended", transaction.requestEnd)
-        append("Response Started", transaction.responseStart)
-        append("Response Ended", transaction.responseEnd)
-
-        return rows
-    }
-
-    private func endpointText(address: String?, port: Int?) -> String? {
-        switch (address, port) {
-        case let (.some(address), .some(port)):
-            return "\(address):\(port)"
-        case let (.some(address), .none):
-            return address
-        case let (.none, .some(port)):
-            return "Port \(port)"
-        case (.none, .none):
-            return nil
         }
     }
 
@@ -550,7 +374,11 @@ struct ApxyDebugRecordDetailView: View {
         .from(record: record)
     }
 
-    private var statusColor: Color { statusPresentation.color }
+    private var theme: ApxyDebugThemePalette {
+        ApxyDebugTheme.palette(for: colorScheme)
+    }
+
+    private var statusColor: Color { statusPresentation.color(in: theme) }
     private var statusSymbol: String { statusPresentation.iconName }
 
     private var requestBodySize: Int64? {
@@ -699,23 +527,25 @@ struct ApxyDebugRecordDetailView: View {
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Record Detail iOS") {
+#Preview("Record Detail Light iOS") {
     NavigationStack {
         ApxyDebugRecordDetailView(record: ApxyDebugPreviewFixtures.failedRecord)
     }
     .apxyPreviewDetail(.iOS)
+    .preferredColorScheme(.light)
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Record Detail macOS") {
+#Preview("Record Detail Dark macOS") {
     NavigationStack {
         ApxyDebugRecordDetailView(record: ApxyDebugPreviewFixtures.failedRecord)
     }
     .apxyPreviewDetail(.macOS)
+    .preferredColorScheme(.dark)
 }
 #endif
 
-private struct ApxyDebugRequestSection: Identifiable {
+struct ApxyDebugRequestSection: Identifiable {
     let kind: ApxyDebugRequestKind
     let sectionTitle: String
     let headersTitle: String

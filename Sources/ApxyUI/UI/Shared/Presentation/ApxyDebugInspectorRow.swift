@@ -8,24 +8,27 @@ struct ApxyDebugInspectorRow: View {
     let detail: String
     var isEnabled: Bool = true
     var showsChevron: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.body)
-                .foregroundStyle(isEnabled ? tint : .secondary)
+                .foregroundStyle(isEnabled ? tint : theme.textMuted)
                 .frame(width: ApxyDebugChrome.iconColumnWidth, alignment: .leading)
 
             Text(title)
                 .lineLimit(2)
-                .foregroundStyle(isEnabled ? .primary : .secondary)
+                .foregroundStyle(isEnabled ? theme.textPrimary : theme.textSecondary)
 
             Spacer()
 
             if !detail.isEmpty {
                 Text(detail)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .monospacedDigit()
                     .lineLimit(1)
             }
@@ -33,7 +36,7 @@ struct ApxyDebugInspectorRow: View {
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.footnote.bold())
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.textMuted)
             }
         }
         .padding(.vertical, 1)

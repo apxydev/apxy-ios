@@ -2,7 +2,13 @@ import Foundation
 
 protocol SessionTransporting: Actor, Sendable {
     func registerClient(_ client: SDKClient) async throws
-    func createSession(id: String, clientID: String, context: ClientContext) async throws
+    func createSession(
+        id: String,
+        name: String?,
+        createdAt: Date?,
+        clientID: String,
+        context: ClientContext
+    ) async throws
     func updateSessionContext(id: String, context: ClientContext) async throws
 }
 
@@ -37,16 +43,26 @@ actor SessionTransport: SessionTransporting {
 
     func createSession(
         id: String,
+        name: String?,
+        createdAt: Date?,
         clientID: String,
         context: ClientContext
     ) async throws {
         struct Payload: Encodable {
             let id: String
+            let name: String?
+            let created_at: Date?
             let sdk_client_id: String
             let user_context: ClientContext
         }
 
-        let payload = Payload(id: id, sdk_client_id: clientID, user_context: context)
+        let payload = Payload(
+            id: id,
+            name: name,
+            created_at: createdAt,
+            sdk_client_id: clientID,
+            user_context: context
+        )
         try await post(path: "/api/v1/sdk/sessions", body: encoder.encode(payload))
     }
 

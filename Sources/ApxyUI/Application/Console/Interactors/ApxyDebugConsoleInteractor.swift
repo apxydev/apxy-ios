@@ -7,10 +7,15 @@ final class ApxyDebugConsoleInteractor: ObservableObject {
     @Published private(set) var state = ApxyDebugConsoleViewState()
 
     private let store: ApxyDebugStore
+    private let scope: ApxyDebugConsoleScope
     private var updatesTask: Task<Void, Never>?
 
-    init(store: ApxyDebugStore) {
+    init(
+        store: ApxyDebugStore,
+        scope: ApxyDebugConsoleScope = .all
+    ) {
         self.store = store
+        self.scope = scope
         observeStore()
     }
 
@@ -31,14 +36,9 @@ final class ApxyDebugConsoleInteractor: ObservableObject {
     }
 
     func setSelectedSessionID(_ sessionID: String?) {
+        guard scope.allowsSessionSelection else { return }
         updateFilterState {
             $0.selectedSessionID = sessionID
-        }
-    }
-
-    func setSelectedHost(_ host: String?) {
-        updateFilterState {
-            $0.selectedHost = host
         }
     }
 
@@ -59,37 +59,20 @@ final class ApxyDebugConsoleInteractor: ObservableObject {
         }
     }
 
-    func clear() {
-        state.resetVisibleStateForClear()
+    func resetFilters() {
+        applyFilterState(.init())
+    }
 
+    func clear() {
         Task { [store] in
             await store.clear()
         }
     }
 
-    func resetFilters() {
-        applyFilterState(.init())
-    }
-
-    func prepareExport() {
-        let records = state.records
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let url = try ApxyDebugConsoleExporter.write(records: records)
-                await MainActor.run {
-                    self.state.setExportResult(url: url)
-                }
-            } catch {
-                await MainActor.run {
-                    self.state.setExportError(error.localizedDescription)
-                }
-            }
+    func deleteSession(id sessionID: String) {
+        Task { [store] in
+            await store.deleteSession(id: sessionID)
         }
-    }
-
-    func dismissExportError() {
-        state.exportError = nil
     }
 
     private func observeStore() {
@@ -114,17 +97,14 @@ final class ApxyDebugConsoleInteractor: ObservableObject {
 
         state.snapshot = snapshot
         refreshDerivedState()
-        if state.isClearing, snapshot.records.isEmpty {
-            state.isClearing = false
-        }
     }
 
     private func refreshDerivedState() {
         let derivedState = ApxyDebugConsoleDerivedState.make(
             snapshot: state.snapshot,
+            scope: scope,
             filterState: state.filterState,
-            selectedRecordID: state.selectedRecordID,
-            isClearing: state.isClearing
+            selectedRecordID: state.selectedRecordID
         )
 
         state.apply(derivedState)
@@ -133,9 +113,9 @@ final class ApxyDebugConsoleInteractor: ObservableObject {
     private func syncSelectedRecord() {
         let derivedState = ApxyDebugConsoleDerivedState.make(
             snapshot: state.snapshot,
+            scope: scope,
             filterState: state.filterState,
-            selectedRecordID: state.selectedRecordID,
-            isClearing: state.isClearing
+            selectedRecordID: state.selectedRecordID
         )
 
         if state.selectedRecordID != derivedState.selectedRecordID {
@@ -160,7 +140,7 @@ final class ApxyDebugConsoleInteractor: ObservableObject {
     private func scheduleHighlightRemoval(for insertedIDs: Set<String>) {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 1_800_000_000)
-            guard let self, !self.state.isClearing else { return }
+            guard let self else { return }
             self.state.highlightedRecordIDs.subtract(insertedIDs)
         }
     }

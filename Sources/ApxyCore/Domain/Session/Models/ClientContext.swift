@@ -2,7 +2,7 @@ import Foundation
 
 /// Mirrors the Go `SessionClientContext` struct.
 /// Sent as the body of `POST /api/v1/sdk/sessions` and `PATCH /api/v1/sdk/sessions/:id`.
-public struct ClientContext: Codable, Sendable {
+public struct ClientContext: Codable, Sendable, Equatable {
     public var userID: String?
     public var userEmail: String?
     public var userName: String?

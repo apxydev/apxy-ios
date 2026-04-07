@@ -4,28 +4,34 @@ import Foundation
 /// and the current connection snapshot so records and metadata are captured from
 /// one consistent state owner.
 actor SessionManager {
-    private let transport: any SessionTransporting
-    private let recordTransport: any RecordTransport
+    private var transport: any SessionTransporting
+    private var recordTransport: any RecordTransport
     private let debugStore: ApxyDebugStore?
     private let connectionStateTracker: ConnectionStateTracker
     private let sessionIdleTimeout: TimeInterval
-    private let flushInterval: TimeInterval
-    private let recordDeliveryMode: RecordDeliveryMode
+    private var flushInterval: TimeInterval
+    private var recordDeliveryMode: RecordDeliveryMode
     private let buffer: RecordBuffer
 
     private var context = SessionContext()
     private var currentSessionID: String?
+    private var currentServerURL: String?
     private var sdkClient: SDKClient?
     private var hasRegisteredClient = false
     private var backgroundedAt: Date?
     private var connectionSnapshot = ConnectionSnapshot.unknown
     private var isRunning = false
     private var flushTask: Task<Void, Never>?
+    private var scheduledFlushTask: Task<Void, Never>?
+    private var activeFlushTask: Task<Void, Never>?
+    private var flushRequestedWhileActive = false
+    private var contextSyncTask: Task<Void, Never>?
 
     init(
         transport: any SessionTransporting,
         recordTransport: any RecordTransport,
         debugStore: ApxyDebugStore? = nil,
+        serverURL: String?,
         connectionStateTracker: ConnectionStateTracker,
         bufferCapacity: Int,
         recordDeliveryMode: RecordDeliveryMode,
@@ -35,11 +41,68 @@ actor SessionManager {
         self.transport = transport
         self.recordTransport = recordTransport
         self.debugStore = debugStore
+        self.currentServerURL = serverURL
         self.connectionStateTracker = connectionStateTracker
         self.sessionIdleTimeout = sessionIdleTimeout
         self.flushInterval = max(1, flushInterval)
         self.recordDeliveryMode = recordDeliveryMode
         self.buffer = RecordBuffer(capacity: bufferCapacity)
+    }
+
+    func reconfigure(
+        transport: any SessionTransporting,
+        recordTransport: any RecordTransport,
+        serverURL: String?,
+        recordDeliveryMode: RecordDeliveryMode,
+        flushInterval: TimeInterval
+    ) async {
+        let normalizedFlushInterval = max(1, flushInterval)
+        let oldRecordTransport = self.recordTransport
+        let previousHasRegisteredClient = hasRegisteredClient
+        let previousSessionID = currentSessionID
+
+        guard isRunning else {
+            self.transport = transport
+            self.recordTransport = recordTransport
+            self.currentServerURL = serverURL
+            self.flushInterval = normalizedFlushInterval
+            self.recordDeliveryMode = recordDeliveryMode
+            return
+        }
+        flushTask?.cancel()
+        flushTask = nil
+        scheduledFlushTask?.cancel()
+        scheduledFlushTask = nil
+        contextSyncTask?.cancel()
+        contextSyncTask = nil
+
+        await finishPendingRecordFlushes()
+        await oldRecordTransport.stop()
+
+        self.transport = transport
+        self.recordTransport = recordTransport
+        self.currentServerURL = serverURL
+        self.flushInterval = normalizedFlushInterval
+        self.recordDeliveryMode = recordDeliveryMode
+
+        await recordTransport.start()
+        startFlushLoop()
+        isRunning = true
+
+        guard previousHasRegisteredClient else { return }
+        guard let sdkClient else { return }
+        do {
+            try await transport.registerClient(sdkClient)
+            await connectionStateTracker.reportServerEndpointSuccess()
+            hasRegisteredClient = true
+            currentSessionID = nil
+            await startNewSession()
+        } catch {
+            SDKLogger.warn("cannot reach server (reconfigure): \(error.localizedDescription)")
+            await connectionStateTracker.reportServerEndpointFailure(reason: error.localizedDescription)
+            hasRegisteredClient = previousHasRegisteredClient
+            currentSessionID = previousSessionID
+        }
     }
 
     func start() async {
@@ -73,7 +136,14 @@ actor SessionManager {
 
         flushTask?.cancel()
         flushTask = nil
+        scheduledFlushTask?.cancel()
+        scheduledFlushTask = nil
+        contextSyncTask?.cancel()
+        contextSyncTask = nil
 
+        if let activeFlushTask {
+            await activeFlushTask.value
+        }
         await flushBufferedRecords()
         await recordTransport.stop()
 
@@ -121,19 +191,19 @@ actor SessionManager {
     func setUser(_ user: ApxyUser) async {
         guard isRunning else { return }
         context.setUser(user)
-        await syncContextToActiveSession()
+        scheduleContextSync()
     }
 
     func setTag(key: String, value: String) async {
         guard isRunning else { return }
         context.setTag(key: key, value: value)
-        await syncContextToActiveSession()
+        scheduleContextSync()
     }
 
     func setContext(key: String, value: ApxyContextValue) async {
         guard isRunning else { return }
         context.setContext(key: key, value: value)
-        await syncContextToActiveSession()
+        scheduleContextSync()
     }
 
     func capture(_ payload: CapturePayload, debugContext: DebugCaptureContext? = nil) async {
@@ -199,16 +269,33 @@ actor SessionManager {
 
     private func startNewSession() async {
         guard isRunning, let sdkClient else { return }
+        contextSyncTask?.cancel()
+        contextSyncTask = nil
 
         let sessionID = UUID().uuidString
+        let createdAt = Date()
+        let name = Self.defaultSessionName(createdAt: createdAt)
         currentSessionID = sessionID
 
         SDKLogger.debug("createSession sessionId=\(String(sessionID.prefix(8)))")
 
         let clientContext = context.toClientContext(networkType: connectionSnapshot.networkType)
+        if let debugStore {
+            await debugStore.beginSession(
+                id: sessionID,
+                name: name,
+                createdAt: createdAt,
+                sdkClient: sdkClient,
+                context: clientContext,
+                serverURL: currentServerURL,
+                isLiveManaged: currentServerURL != nil
+            )
+        }
         do {
             try await transport.createSession(
                 id: sessionID,
+                name: name,
+                createdAt: createdAt,
                 clientID: sdkClient.id,
                 context: clientContext
             )
@@ -223,6 +310,13 @@ actor SessionManager {
         guard isRunning, let currentSessionID else { return }
 
         let clientContext = context.toClientContext(networkType: connectionSnapshot.networkType)
+        if let debugStore {
+            await debugStore.updateSessionContext(
+                id: currentSessionID,
+                context: clientContext,
+                serverURL: currentServerURL
+            )
+        }
         do {
             try await transport.updateSessionContext(
                 id: currentSessionID,
@@ -236,18 +330,13 @@ actor SessionManager {
     }
 
     private func dispatch(_ record: NetworkRecord) async {
+        await buffer.append(record)
+
         switch recordDeliveryMode {
         case .buffered:
-            await buffer.append(record)
+            break
         case .immediate:
-            do {
-                try await recordTransport.send(records: [record])
-            } catch {
-                SDKLogger.warn(
-                    "immediate transport send failed; buffering record for retry: \(error.localizedDescription)"
-                )
-                await buffer.append(record)
-            }
+            scheduleRecordFlush()
         }
     }
 
@@ -261,9 +350,85 @@ actor SessionManager {
                     break
                 }
 
-                await self.flushBufferedRecords()
+                self.scheduleRecordFlush()
             }
         }
+    }
+
+    private func scheduleRecordFlush(after delay: TimeInterval = 0) {
+        guard isRunning else { return }
+
+        if activeFlushTask != nil {
+            flushRequestedWhileActive = true
+            return
+        }
+
+        guard scheduledFlushTask == nil else { return }
+
+        scheduledFlushTask = Task {
+            if delay > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: sleepNanoseconds(for: delay))
+                } catch {
+                    return
+                }
+            }
+
+            await self.beginScheduledRecordFlush()
+        }
+    }
+
+    private func beginScheduledRecordFlush() async {
+        scheduledFlushTask = nil
+        guard isRunning else { return }
+
+        if activeFlushTask != nil {
+            flushRequestedWhileActive = true
+            return
+        }
+
+        activeFlushTask = Task {
+            await self.performRecordFlushLoop()
+        }
+    }
+
+    private func performRecordFlushLoop() async {
+        while isRunning {
+            flushRequestedWhileActive = false
+
+            let records = await buffer.drain()
+            guard !records.isEmpty else { break }
+
+            do {
+                try await recordTransport.send(records: records)
+            } catch {
+                SDKLogger.warn(
+                    "record flush failed; re-buffering \(records.count) record(s): \(error.localizedDescription)"
+                )
+                await buffer.prepend(records)
+                break
+            }
+
+            guard flushRequestedWhileActive else { break }
+        }
+
+        activeFlushTask = nil
+
+        if isRunning, flushRequestedWhileActive {
+            flushRequestedWhileActive = false
+            scheduleRecordFlush()
+        }
+    }
+
+    private func finishPendingRecordFlushes() async {
+        scheduledFlushTask?.cancel()
+        scheduledFlushTask = nil
+
+        if let activeFlushTask {
+            await activeFlushTask.value
+        }
+
+        await flushBufferedRecords()
     }
 
     private func flushBufferedRecords() async {
@@ -278,6 +443,20 @@ actor SessionManager {
             )
             await buffer.prepend(records)
         }
+    }
+
+    private func scheduleContextSync() {
+        guard isRunning, currentSessionID != nil else { return }
+
+        guard contextSyncTask == nil else { return }
+        contextSyncTask = Task {
+            await self.performScheduledContextSync()
+        }
+    }
+
+    private func performScheduledContextSync() async {
+        contextSyncTask = nil
+        await syncContextToActiveSession()
     }
 
     private func logCaptureDetails(
@@ -314,8 +493,20 @@ actor SessionManager {
         let normalized = contentType.lowercased()
         return normalized.contains("json") || normalized.contains("+json")
     }
+
+    private static func defaultSessionName(createdAt: Date) -> String {
+        sessionNameFormatter.string(from: createdAt)
+    }
 }
 
 private func sleepNanoseconds(for duration: TimeInterval) -> UInt64 {
     UInt64(max(0, duration) * 1_000_000_000)
 }
+
+private let sessionNameFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "'SDK' yyyy-MM-dd HH:mm:ss"
+    return formatter
+}()

@@ -23,6 +23,17 @@ public final class ApxyDebugConsoleViewModel: ObservableObject {
         bindInteractor()
     }
 
+    init(
+        store: ApxyDebugStore,
+        scope: ApxyDebugConsoleScope
+    ) {
+        let interactor = ApxyDebugConsoleInteractor(store: store, scope: scope)
+        self.interactor = interactor
+        self.searchText = interactor.state.filterState.searchText
+
+        bindInteractor()
+    }
+
     var status: ApxyDebugStatusFilter {
         get { interactor.state.filterState.status }
         set { interactor.setStatus(newValue) }
@@ -31,11 +42,6 @@ public final class ApxyDebugConsoleViewModel: ObservableObject {
     var selectedSessionID: String? {
         get { interactor.state.filterState.selectedSessionID }
         set { interactor.setSelectedSessionID(newValue) }
-    }
-
-    var selectedHost: String? {
-        get { interactor.state.filterState.selectedHost }
-        set { interactor.setSelectedHost(newValue) }
     }
 
     var selectedMethod: String? {
@@ -72,24 +78,12 @@ public final class ApxyDebugConsoleViewModel: ObservableObject {
         interactor.state.failureCount
     }
 
-    var hosts: [String] {
-        interactor.state.hosts
-    }
-
     var methods: [String] {
         interactor.state.methods
     }
 
     var selectedRecord: ApxyDebugRecord? {
         interactor.state.selectedRecord
-    }
-
-    var exportURL: URL? {
-        interactor.state.exportURL
-    }
-
-    var exportError: String? {
-        interactor.state.exportError
     }
 
     var highlightedRecordIDs: Set<String> {
@@ -104,19 +98,11 @@ public final class ApxyDebugConsoleViewModel: ObservableObject {
         interactor.state.activeFilters
     }
 
-    var activeFilterItems: [ActiveFilterItem] {
-        interactor.state.activeFilterItems
-    }
-
     func clearFilter(_ kind: ActiveFilterItem.Kind) {
         if kind == .search, !searchText.isEmpty {
             searchText = ""
         }
         interactor.clearFilter(kind)
-    }
-
-    func clear() {
-        interactor.clear()
     }
 
     func resetFilters() {
@@ -126,12 +112,25 @@ public final class ApxyDebugConsoleViewModel: ObservableObject {
         interactor.resetFilters()
     }
 
-    func prepareExport() {
-        interactor.prepareExport()
+    func clear() {
+        interactor.clear()
     }
 
-    func dismissExportError() {
-        interactor.dismissExportError()
+    func deleteSession(id sessionID: String) {
+        interactor.deleteSession(id: sessionID)
+    }
+
+    @Published var shareError: String?
+
+    func shareSession(id sessionID: String) {
+        Task {
+            do {
+                try await Apxy.shareLocalSession(id: sessionID)
+                shareError = nil
+            } catch {
+                shareError = error.localizedDescription
+            }
+        }
     }
 
     private func bindInteractor() {

@@ -4,7 +4,13 @@ import Foundation
 actor LocalOnlySessionTransport: SessionTransporting {
     func registerClient(_ client: SDKClient) async throws {}
 
-    func createSession(id: String, clientID: String, context: ClientContext) async throws {}
+    func createSession(
+        id: String,
+        name: String?,
+        createdAt: Date?,
+        clientID: String,
+        context: ClientContext
+    ) async throws {}
 
     func updateSessionContext(id: String, context: ClientContext) async throws {}
 }

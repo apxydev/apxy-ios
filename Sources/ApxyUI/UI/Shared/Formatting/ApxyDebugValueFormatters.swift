@@ -2,6 +2,10 @@ import Foundation
 import ApxyCore
 
 enum ApxyDebugValueFormatters {
+    static func sessionPrefix(_ sessionID: String) -> String {
+        String(sessionID.prefix(8))
+    }
+
     static func timestamp(_ date: Date) -> String {
         timestampFormatter.string(from: date)
     }
@@ -34,7 +38,7 @@ enum ApxyDebugValueFormatters {
     }
 
     static func sessionTitle(_ session: ApxyDebugSession) -> String {
-        let prefix = String(session.id.prefix(8))
+        let prefix = sessionPrefix(session.id)
         return "\(prefix) · \(session.requestCount) request\(session.requestCount == 1 ? "" : "s")"
     }
 

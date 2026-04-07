@@ -5,31 +5,29 @@ struct ApxyDebugPlaceholderPanel: View {
     let title: String
     let systemImage: String
     let message: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        Group {
-            if #available(iOS 17.0, macOS 14.0, *) {
-                ContentUnavailableView {
-                    Label(title, systemImage: systemImage)
-                } description: {
-                    Text(message)
-                }
-            } else {
-                VStack(spacing: 12) {
-                    Image(systemName: systemImage)
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                    Text(title)
-                        .font(.headline)
-                    Text(message)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 320)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
+        ApxyDebugSurfaceCard(style: .elevated) {
+            VStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.title2)
+                    .foregroundStyle(theme.accent)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(theme.accentSoft))
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(theme.textPrimary)
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
         }
     }
 }
