@@ -22,7 +22,6 @@ struct ApxyDebugConsoleFilter: Sendable, Equatable {
     var searchText: String = ""
     var status: ApxyDebugStatusFilter = .all
     var sessionID: String?
-    var host: String?
     var method: String?
 }
 
@@ -31,7 +30,6 @@ enum ApxyDebugFilterEngine {
         records.filter { record in
             matchesStatus(record, status: filter.status)
                 && matchesSession(record, sessionID: filter.sessionID)
-                && matchesHost(record, host: filter.host)
                 && matchesMethod(record, method: filter.method)
                 && matchesSearch(record, query: filter.searchText)
         }
@@ -51,11 +49,6 @@ enum ApxyDebugFilterEngine {
     private static func matchesSession(_ record: ApxyDebugRecord, sessionID: String?) -> Bool {
         guard let sessionID, !sessionID.isEmpty else { return true }
         return record.sessionID == sessionID
-    }
-
-    private static func matchesHost(_ record: ApxyDebugRecord, host: String?) -> Bool {
-        guard let host, !host.isEmpty else { return true }
-        return record.request.host == host
     }
 
     private static func matchesMethod(_ record: ApxyDebugRecord, method: String?) -> Bool {

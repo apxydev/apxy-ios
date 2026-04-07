@@ -42,12 +42,6 @@ final class ApxyDebugConsoleInteractor: ObservableObject {
         }
     }
 
-    func setSelectedHost(_ host: String?) {
-        updateFilterState {
-            $0.selectedHost = host
-        }
-    }
-
     func setSelectedMethod(_ method: String?) {
         updateFilterState {
             $0.selectedMethod = method

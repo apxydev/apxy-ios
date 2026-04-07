@@ -4,10 +4,9 @@ import ApxyCore
 @available(iOS 16.0, macOS 13.0, *)
 struct ApxyDebugConsoleFiltersMenu: View {
     var selectedSessionID: Binding<String?>?
-    @Binding var selectedHost: String?
+    @Binding var selectedStatus: ApxyDebugStatusFilter
     @Binding var selectedMethod: String?
     let sessions: [ApxyDebugSession]
-    let hosts: [String]
     let methods: [String]
     let onReset: () -> Void
 
@@ -21,10 +20,9 @@ struct ApxyDebugConsoleFiltersMenu: View {
                     }
                 }
             }
-            Picker("Host", selection: $selectedHost) {
-                Text("All Hosts").tag(String?.none)
-                ForEach(hosts, id: \.self) { host in
-                    Text(host).tag(Optional(host))
+            Picker("Status", selection: $selectedStatus) {
+                ForEach(ApxyDebugStatusFilter.allCases, id: \.self) { status in
+                    Text(status.title).tag(status)
                 }
             }
             Picker("Method", selection: $selectedMethod) {
@@ -45,20 +43,19 @@ struct ApxyDebugConsoleFiltersMenu: View {
 @available(iOS 17.0, macOS 14.0, *)
 private struct ApxyDebugConsoleFiltersMenuPreview: View {
     @State private var selectedSessionID: String? = ApxyDebugPreviewFixtures.sessions.last?.id
-    @State private var selectedHost: String? = "edge.apxy.dev"
+    @State private var selectedStatus: ApxyDebugStatusFilter = .failures
     @State private var selectedMethod: String? = "PATCH"
 
     var body: some View {
         ApxyDebugConsoleFiltersMenu(
             selectedSessionID: $selectedSessionID,
-            selectedHost: $selectedHost,
+            selectedStatus: $selectedStatus,
             selectedMethod: $selectedMethod,
             sessions: ApxyDebugPreviewFixtures.sessions,
-            hosts: ["api.apxy.dev", "auth.apxy.dev", "edge.apxy.dev", "mock.apxy.dev"],
             methods: ["GET", "POST", "PATCH", "DELETE"],
             onReset: {
                 selectedSessionID = nil
-                selectedHost = nil
+                selectedStatus = .all
                 selectedMethod = nil
             }
         )

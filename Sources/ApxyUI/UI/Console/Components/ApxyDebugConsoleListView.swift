@@ -6,13 +6,11 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
     let records: [ApxyDebugRecord]
     let totalRecordCount: Int
     let visibleRecordCount: Int
-    let failureCount: Int
     let searchText: String
     let activeFilters: [String]
     let highlightedRecordIDs: Set<String>
     let usesCompactNavigation: Bool
     let selection: Binding<String?>?
-    @Binding var selectedStatus: ApxyDebugStatusFilter
     let onResetFilters: () -> Void
     let onSelectRecord: (ApxyDebugRecord) -> Void
     let quickActions: (ApxyDebugRecord) -> QuickActions
@@ -22,16 +20,6 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
         let theme = ApxyDebugTheme.palette(for: colorScheme)
 
         List(selection: selection) {
-            Section {
-                ApxyDebugConsoleSummaryBar(
-                    totalCount: totalRecordCount,
-                    failureCount: failureCount,
-                    selectedStatus: $selectedStatus
-                )
-            }
-            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 0, trailing: 16))
-            .listRowSeparator(.hidden)
-
             if records.isEmpty {
                 Section {
                     emptyState
@@ -133,7 +121,6 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
 private struct ApxyDebugConsoleListViewPreview: View {
-    @State private var selectedStatus: ApxyDebugStatusFilter = .all
     @State private var selectedRecordID: String? = ApxyDebugPreviewFixtures.records.first?.id
 
     var body: some View {
@@ -142,13 +129,11 @@ private struct ApxyDebugConsoleListViewPreview: View {
                 records: ApxyDebugPreviewFixtures.records,
                 totalRecordCount: ApxyDebugPreviewFixtures.records.count,
                 visibleRecordCount: ApxyDebugPreviewFixtures.records.count,
-                failureCount: ApxyDebugPreviewFixtures.records.filter(\.isFailure).count,
                 searchText: "",
                 activeFilters: [],
                 highlightedRecordIDs: [ApxyDebugPreviewFixtures.failedRecord.id],
                 usesCompactNavigation: false,
                 selection: $selectedRecordID,
-                selectedStatus: $selectedStatus,
                 onResetFilters: {},
                 onSelectRecord: { record in
                     selectedRecordID = record.id
@@ -181,13 +166,11 @@ private struct ApxyDebugConsoleListViewPreview: View {
         records: [],
         totalRecordCount: ApxyDebugPreviewFixtures.records.count,
         visibleRecordCount: 0,
-        failureCount: 1,
         searchText: "timeout",
         activeFilters: ApxyDebugPreviewFixtures.activeFilters,
         highlightedRecordIDs: [],
         usesCompactNavigation: true,
         selection: nil,
-        selectedStatus: .constant(.failures),
         onResetFilters: {},
         onSelectRecord: { _ in },
         quickActions: { _ in
@@ -203,13 +186,11 @@ private struct ApxyDebugConsoleListViewPreview: View {
         records: [],
         totalRecordCount: ApxyDebugPreviewFixtures.records.count,
         visibleRecordCount: 0,
-        failureCount: 1,
         searchText: "timeout",
         activeFilters: ApxyDebugPreviewFixtures.activeFilters,
         highlightedRecordIDs: [],
         usesCompactNavigation: true,
         selection: nil,
-        selectedStatus: .constant(.failures),
         onResetFilters: {},
         onSelectRecord: { _ in },
         quickActions: { _ in

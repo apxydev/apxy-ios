@@ -44,11 +44,6 @@ public final class ApxyDebugConsoleViewModel: ObservableObject {
         set { interactor.setSelectedSessionID(newValue) }
     }
 
-    var selectedHost: String? {
-        get { interactor.state.filterState.selectedHost }
-        set { interactor.setSelectedHost(newValue) }
-    }
-
     var selectedMethod: String? {
         get { interactor.state.filterState.selectedMethod }
         set { interactor.setSelectedMethod(newValue) }
@@ -81,10 +76,6 @@ public final class ApxyDebugConsoleViewModel: ObservableObject {
 
     var failureCount: Int {
         interactor.state.failureCount
-    }
-
-    var hosts: [String] {
-        interactor.state.hosts
     }
 
     var methods: [String] {

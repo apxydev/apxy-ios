@@ -7,7 +7,6 @@ struct ApxyDebugConsoleDerivedState {
     let totalRecordCount: Int
     let visibleRecordCount: Int
     let failureCount: Int
-    let hosts: [String]
     let methods: [String]
     let selectedRecordID: String?
     let selectedRecord: ApxyDebugRecord?
@@ -34,7 +33,6 @@ struct ApxyDebugConsoleDerivedState {
             totalRecordCount: scopedRecords.count,
             visibleRecordCount: filteredRecords.count,
             failureCount: scopedRecords.lazy.filter(\.isFailure).count,
-            hosts: Array(Set(scopedRecords.lazy.map(\.request.host))).sorted(),
             methods: Array(Set(scopedRecords.lazy.map(\.request.method))).sorted(),
             selectedRecordID: selection.id,
             selectedRecord: selection.record

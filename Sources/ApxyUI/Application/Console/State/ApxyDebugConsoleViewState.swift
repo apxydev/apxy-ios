@@ -8,7 +8,6 @@ struct ApxyDebugConsoleViewState {
     var totalRecordCount = 0
     var visibleRecordCount = 0
     var failureCount = 0
-    var hosts: [String] = []
     var methods: [String] = []
     var selectedRecordID: String?
     var selectedRecord: ApxyDebugRecord?
@@ -30,7 +29,6 @@ struct ApxyDebugConsoleViewState {
         sessions = derivedState.sessions
         totalRecordCount = derivedState.totalRecordCount
         failureCount = derivedState.failureCount
-        hosts = derivedState.hosts
         methods = derivedState.methods
         records = derivedState.records
         visibleRecordCount = derivedState.visibleRecordCount

@@ -119,13 +119,11 @@ struct ApxyDebugRequestsView: View {
             records: screenModel.records,
             totalRecordCount: screenModel.totalRecordCount,
             visibleRecordCount: screenModel.visibleRecordCount,
-            failureCount: screenModel.failureCount,
             searchText: screenModel.viewModel.searchText,
             activeFilters: screenModel.activeFilters,
             highlightedRecordIDs: screenModel.highlightedRecordIDs,
             usesCompactNavigation: usesCompactNavigation,
             selection: selection,
-            selectedStatus: screenModel.statusBinding,
             onResetFilters: screenModel.resetFilters,
             onSelectRecord: handleRecordSelection,
             quickActions: quickActions(for:)
@@ -168,10 +166,9 @@ struct ApxyDebugRequestsView: View {
             selectedSessionID: screenModel.showsSessionFilter
                 ? screenModel.selectedSessionIDBinding
                 : nil,
-            selectedHost: screenModel.selectedHostBinding,
+            selectedStatus: screenModel.statusBinding,
             selectedMethod: screenModel.selectedMethodBinding,
             sessions: screenModel.sessions,
-            hosts: screenModel.hosts,
             methods: screenModel.methods,
             onReset: screenModel.resetFilters
         )

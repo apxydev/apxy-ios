@@ -4,7 +4,6 @@ struct ApxyDebugConsoleActiveFilterItem: Identifiable, Equatable {
     enum Kind {
         case status
         case session
-        case host
         case method
         case search
     }

@@ -28,7 +28,6 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
     var activeFilters: [String] { viewModel.activeFilters }
     var highlightedRecordIDs: Set<String> { viewModel.highlightedRecordIDs }
     var sessions: [ApxyDebugSession] { viewModel.sessions }
-    var hosts: [String] { viewModel.hosts }
     var methods: [String] { viewModel.methods }
     var compactRecordID: String? { coordinator.compactRecordID }
     var isShowingCompactDetail: Bool { coordinator.isShowingCompactDetail }
@@ -69,13 +68,6 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
         Binding(
             get: { self.viewModel.selectedSessionID },
             set: { self.viewModel.selectedSessionID = $0 }
-        )
-    }
-
-    var selectedHostBinding: Binding<String?> {
-        Binding(
-            get: { self.viewModel.selectedHost },
-            set: { self.viewModel.selectedHost = $0 }
         )
     }
 
