@@ -264,7 +264,8 @@ public actor ApxyDebugStore {
                     startedAt: $0.createdAt,
                     lastEventAt: $0.lastEventAt,
                     requestCount: $0.requestCount,
-                    failureCount: $0.failureCount
+                    failureCount: $0.failureCount,
+                    syncState: $0.syncState
                 )
             }
             .sorted { $0.lastEventAt > $1.lastEventAt }

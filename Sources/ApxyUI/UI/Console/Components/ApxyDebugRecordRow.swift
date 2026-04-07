@@ -8,8 +8,6 @@ struct ApxyDebugRecordRow: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let theme = ApxyDebugTheme.palette(for: colorScheme)
-
         VStack(alignment: .leading, spacing: ApxyDebugChrome.compactRowSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 ApxyDebugStatusDot(color: statusColor)

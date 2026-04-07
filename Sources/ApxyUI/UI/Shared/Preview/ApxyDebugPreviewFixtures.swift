@@ -339,35 +339,40 @@ enum ApxyDebugPreviewFixtures {
             startedAt: previewNow.addingTimeInterval(-360),
             lastEventAt: previewNow.addingTimeInterval(-300),
             requestCount: 2,
-            failureCount: 1
+            failureCount: 1,
+            syncState: .synced
         ),
         ApxyDebugSession(
             id: "session-alpha",
             startedAt: previewNow.addingTimeInterval(-240),
             lastEventAt: previewNow.addingTimeInterval(-120),
             requestCount: 2,
-            failureCount: 0
+            failureCount: 0,
+            syncState: .failed
         ),
         ApxyDebugSession(
             id: "session-beta",
             startedAt: previewNow.addingTimeInterval(-90),
             lastEventAt: previewNow,
             requestCount: 3,
-            failureCount: 2
+            failureCount: 2,
+            syncState: .syncing
         ),
         ApxyDebugSession(
             id: "session-gamma",
             startedAt: previewNow.addingTimeInterval(-45),
             lastEventAt: previewNow.addingTimeInterval(-5),
             requestCount: 2,
-            failureCount: 0
+            failureCount: 0,
+            syncState: .localOnly
         ),
         ApxyDebugSession(
             id: "session-delta",
             startedAt: previewNow.addingTimeInterval(-14),
             lastEventAt: previewNow.addingTimeInterval(-2),
             requestCount: 4,
-            failureCount: 1
+            failureCount: 1,
+            syncState: .liveManaged
         ),
     ]
 

@@ -26,6 +26,8 @@ struct ApxyDebugSessionRow: View {
                         .foregroundStyle(theme.accent)
                 }
 
+                syncStateBadge(for: session.syncState, theme: theme)
+
                 Spacer()
 
                 Text(ApxyDebugValueFormatters.compactTimestamp(session.lastEventAt))
@@ -52,6 +54,26 @@ struct ApxyDebugSessionRow: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: ApxyDebugChrome.controlCornerRadius, style: .continuous))
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func syncStateBadge(for syncState: ApxyLocalSessionSyncState, theme: ApxyDebugThemePalette) -> some View {
+        switch syncState {
+        case .syncing:
+            ProgressView()
+                .scaleEffect(0.7)
+                .tint(theme.textMuted)
+        case .synced:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(ApxyDebugThemeTone.success.color(in: theme))
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(ApxyDebugThemeTone.error.color(in: theme))
+        case .localOnly, .liveManaged:
+            EmptyView()
+        }
     }
 
     private func sessionMetric(

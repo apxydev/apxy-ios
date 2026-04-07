@@ -120,6 +120,19 @@ public final class ApxyDebugConsoleViewModel: ObservableObject {
         interactor.deleteSession(id: sessionID)
     }
 
+    @Published var shareError: String?
+
+    func shareSession(id sessionID: String) {
+        Task {
+            do {
+                try await Apxy.shareLocalSession(id: sessionID)
+                shareError = nil
+            } catch {
+                shareError = error.localizedDescription
+            }
+        }
+    }
+
     private func bindInteractor() {
         interactor.$state
             .dropFirst()

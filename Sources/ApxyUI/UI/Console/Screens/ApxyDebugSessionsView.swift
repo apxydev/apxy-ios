@@ -37,6 +37,15 @@ struct ApxyDebugSessionsView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                sessionQuickActions(session: session, isActive: index == 0)
+                            }
+                            .modifier(ApxyDebugSessionSwipeActionsModifier(
+                                session: session,
+                                isActive: index == 0,
+                                onShare: { viewModel.shareSession(id: $0) },
+                                onDelete: { viewModel.deleteSession(id: $0) }
+                            ))
                             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
@@ -62,6 +71,34 @@ struct ApxyDebugSessionsView: View {
         .background(theme.canvas.ignoresSafeArea())
         .tint(theme.accent)
         .apxyNavigationChrome(theme: theme, colorScheme: colorScheme)
+        .alert("Share Failed", isPresented: Binding(
+            get: { viewModel.shareError != nil },
+            set: { if !$0 { viewModel.shareError = nil } }
+        )) {
+            Button("OK") { viewModel.shareError = nil }
+        } message: {
+            Text(viewModel.shareError ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private func sessionQuickActions(session: ApxyDebugSession, isActive: Bool) -> some View {
+        Button {
+            viewModel.shareSession(id: session.id)
+        } label: {
+            Label("Share to Server", systemImage: "arrow.up.circle")
+        }
+        .disabled(!session.isShareable)
+
+        Divider()
+
+        if !isActive {
+            Button(role: .destructive) {
+                viewModel.deleteSession(id: session.id)
+            } label: {
+                Label("Delete Session", systemImage: "trash")
+            }
+        }
     }
 
     private var theme: ApxyDebugThemePalette {

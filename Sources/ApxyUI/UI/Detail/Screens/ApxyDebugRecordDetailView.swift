@@ -10,8 +10,6 @@ struct ApxyDebugRecordDetailView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let theme = ApxyDebugTheme.palette(for: colorScheme)
-
         List {
             Section {
                 headerCard
@@ -36,7 +34,7 @@ struct ApxyDebugRecordDetailView: View {
                 }
                 if let sessionID = record.sessionID, !sessionID.isEmpty {
                     LabeledContent("Session") {
-                        Text(String(sessionID.prefix(8)))
+                        Text(ApxyDebugValueFormatters.sessionPrefix(sessionID))
                     }
                 }
             }
