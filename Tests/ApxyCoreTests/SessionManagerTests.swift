@@ -10,6 +10,7 @@ struct SessionManagerTests {
         let manager = SessionManager(
             transport: sessionTransport,
             recordTransport: recordTransport,
+            serverURL: nil,
             connectionStateTracker: tracker,
             bufferCapacity: 16,
             recordDeliveryMode: .buffered,
@@ -31,6 +32,7 @@ struct SessionManagerTests {
         let manager = SessionManager(
             transport: sessionTransport,
             recordTransport: recordTransport,
+            serverURL: nil,
             connectionStateTracker: tracker,
             bufferCapacity: 16,
             recordDeliveryMode: .buffered,
@@ -53,6 +55,7 @@ struct SessionManagerTests {
         let manager = SessionManager(
             transport: sessionTransport,
             recordTransport: recordTransport,
+            serverURL: nil,
             connectionStateTracker: tracker,
             bufferCapacity: 16,
             recordDeliveryMode: .immediate,
@@ -74,6 +77,7 @@ struct SessionManagerTests {
         let manager = SessionManager(
             transport: sessionTransport,
             recordTransport: recordTransport,
+            serverURL: nil,
             connectionStateTracker: tracker,
             bufferCapacity: 16,
             recordDeliveryMode: .buffered,
@@ -86,6 +90,75 @@ struct SessionManagerTests {
         await manager.appDidBecomeActive()
 
         #expect(await sessionTransport.createCalls.count == 1)
+    }
+
+    @Test func reconfigureFlushesBufferedRecordsBeforeSwitchingTransport() async throws {
+        let sessionTransport = MockSessionTransport()
+        let recordTransport = MockRecordTransport()
+        let tracker = ConnectionStateTracker { _ in }
+        let manager = SessionManager(
+            transport: sessionTransport,
+            recordTransport: recordTransport,
+            serverURL: nil,
+            connectionStateTracker: tracker,
+            bufferCapacity: 16,
+            recordDeliveryMode: .buffered,
+            flushInterval: 30,
+            sessionIdleTimeout: 300
+        )
+
+        await manager.start()
+        await manager.capture(makePayload(id: "r1"))
+
+        let newSessionTransport = MockSessionTransport()
+        let newRecordTransport = MockRecordTransport()
+        await manager.reconfigure(
+            transport: newSessionTransport,
+            recordTransport: newRecordTransport,
+            serverURL: nil,
+            recordDeliveryMode: .buffered,
+            flushInterval: 5
+        )
+
+        let flushedBatch = try #require(await recordTransport.sentBatches.first)
+        #expect(flushedBatch.count == 1)
+        #expect(flushedBatch.first?.url == "https://example.com/r1")
+        #expect(await newRecordTransport.sentBatches.isEmpty)
+        #expect(await recordTransport.stopCount == 1)
+        #expect(await newRecordTransport.startCount == 1)
+    }
+
+    @Test func reconfigureFailureKeepsSessionRetryStateIntact() async {
+        let sessionTransport = MockSessionTransport()
+        let recordTransport = MockRecordTransport()
+        let tracker = ConnectionStateTracker { _ in }
+        let manager = SessionManager(
+            transport: sessionTransport,
+            recordTransport: recordTransport,
+            serverURL: nil,
+            connectionStateTracker: tracker,
+            bufferCapacity: 16,
+            recordDeliveryMode: .buffered,
+            flushInterval: 30,
+            sessionIdleTimeout: 0
+        )
+
+        await manager.start()
+
+        let failingTransport = MockSessionTransport(registerError: MockError.registerFailed)
+        await manager.reconfigure(
+            transport: failingTransport,
+            recordTransport: MockRecordTransport(),
+            serverURL: nil,
+            recordDeliveryMode: .buffered,
+            flushInterval: 5
+        )
+
+        await manager.appDidEnterBackground()
+        await manager.appDidBecomeActive()
+
+        #expect(await failingTransport.registerCount == 1)
+        #expect(await failingTransport.createCalls.count == 1)
     }
 
     private func makePayload(id: String) -> CapturePayload {
@@ -155,7 +228,13 @@ private actor MockSessionTransport: SessionTransporting {
         }
     }
 
-    func createSession(id: String, clientID: String, context: ClientContext) async throws {
+    func createSession(
+        id: String,
+        name: String?,
+        createdAt: Date?,
+        clientID: String,
+        context: ClientContext
+    ) async throws {
         createCalls.append(CreateCall(id: id, clientID: clientID, context: context))
         if let createError {
             throw createError
@@ -198,4 +277,5 @@ private actor MockRecordTransport: RecordTransport {
 
 private enum MockError: Error {
     case sendFailed
+    case registerFailed
 }

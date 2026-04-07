@@ -3,7 +3,7 @@ import ApxyCore
 
 @available(iOS 16.0, macOS 13.0, *)
 struct ApxyDebugConsoleFiltersMenu: View {
-    @Binding var selectedSessionID: String?
+    var selectedSessionID: Binding<String?>?
     @Binding var selectedHost: String?
     @Binding var selectedMethod: String?
     let sessions: [ApxyDebugSession]
@@ -13,10 +13,12 @@ struct ApxyDebugConsoleFiltersMenu: View {
 
     var body: some View {
         Menu {
-            Picker("Session", selection: $selectedSessionID) {
-                Text("All Sessions").tag(String?.none)
-                ForEach(sessions) { session in
-                    Text(ApxyDebugValueFormatters.sessionTitle(session)).tag(Optional(session.id))
+            if let selectedSessionID {
+                Picker("Session", selection: selectedSessionID) {
+                    Text("All Sessions").tag(String?.none)
+                    ForEach(sessions) { session in
+                        Text(ApxyDebugValueFormatters.sessionTitle(session)).tag(Optional(session.id))
+                    }
                 }
             }
             Picker("Host", selection: $selectedHost) {

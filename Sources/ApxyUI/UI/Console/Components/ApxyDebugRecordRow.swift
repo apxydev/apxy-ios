@@ -5,8 +5,11 @@ import ApxyCore
 struct ApxyDebugRecordRow: View {
     let record: ApxyDebugRecord
     var isHighlighted: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
         VStack(alignment: .leading, spacing: ApxyDebugChrome.compactRowSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 ApxyDebugStatusDot(color: statusColor)
@@ -14,7 +17,7 @@ struct ApxyDebugRecordRow: View {
                 Text(record.request.method)
                     .font(.caption.smallCaps())
                     .bold()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
 
                 if record.isMocked {
                     mockBadge
@@ -30,22 +33,23 @@ struct ApxyDebugRecordRow: View {
                 Text(ApxyDebugValueFormatters.compactTimestamp(record.capturedAt))
                     .font(.caption)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textMuted)
             }
 
             Text(primaryTitle)
                 .font(.body)
+                .foregroundStyle(theme.textPrimary)
                 .lineLimit(1)
 
             Text(secondaryTitle)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .lineLimit(2)
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(footerText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textMuted)
                     .lineLimit(1)
 
                 Spacer()
@@ -53,13 +57,17 @@ struct ApxyDebugRecordRow: View {
                 if record.redirectCount > 0 {
                     Label("\(record.redirectCount)", systemImage: "arrow.triangle.swap")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(theme.warning)
                 }
             }
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 6)
         .background(rowBackground)
+        .overlay {
+            RoundedRectangle(cornerRadius: ApxyDebugChrome.controlCornerRadius, style: .continuous)
+                .stroke(isHighlighted ? theme.accentBorder : theme.border, lineWidth: 1)
+        }
         .animation(.easeOut(duration: 0.35), value: isHighlighted)
         .clipShape(RoundedRectangle(cornerRadius: ApxyDebugChrome.controlCornerRadius, style: .continuous))
         .contentShape(Rectangle())
@@ -89,7 +97,7 @@ struct ApxyDebugRecordRow: View {
             items.append(ApxyDebugValueFormatters.bytes(responseSize))
         }
         if let sessionID = record.sessionID, !sessionID.isEmpty {
-            items.append("Session \(String(sessionID.prefix(8)))")
+            items.append("Session \(ApxyDebugValueFormatters.sessionPrefix(sessionID))")
         }
         return items.joined(separator: " / ")
     }
@@ -108,12 +116,16 @@ struct ApxyDebugRecordRow: View {
         .from(record: record)
     }
 
-    private var statusColor: Color { statusPresentation.color }
+    private var theme: ApxyDebugThemePalette {
+        ApxyDebugTheme.palette(for: colorScheme)
+    }
+
+    private var statusColor: Color { statusPresentation.color(in: theme) }
 
     private var rowBackground: some ShapeStyle {
         isHighlighted
-            ? AnyShapeStyle(ApxyDebugChrome.selectedFill)
-            : AnyShapeStyle(Color.clear)
+            ? AnyShapeStyle(ApxyDebugChrome.selectedFill(in: theme))
+            : AnyShapeStyle(ApxyDebugChrome.elevatedFill(in: theme))
     }
 
     private var mockBadge: some View {
@@ -122,8 +134,12 @@ struct ApxyDebugRecordRow: View {
             .bold()
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(Color.secondary.opacity(0.18), in: Capsule())
-            .foregroundStyle(.secondary)
+            .background(theme.surface, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(theme.border)
+            }
+            .foregroundStyle(theme.textSecondary)
     }
 }
 

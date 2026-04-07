@@ -4,17 +4,18 @@ import Foundation
 /// and the current connection snapshot so records and metadata are captured from
 /// one consistent state owner.
 actor SessionManager {
-    private let transport: any SessionTransporting
-    private let recordTransport: any RecordTransport
+    private var transport: any SessionTransporting
+    private var recordTransport: any RecordTransport
     private let debugStore: ApxyDebugStore?
     private let connectionStateTracker: ConnectionStateTracker
     private let sessionIdleTimeout: TimeInterval
-    private let flushInterval: TimeInterval
-    private let recordDeliveryMode: RecordDeliveryMode
+    private var flushInterval: TimeInterval
+    private var recordDeliveryMode: RecordDeliveryMode
     private let buffer: RecordBuffer
 
     private var context = SessionContext()
     private var currentSessionID: String?
+    private var currentServerURL: String?
     private var sdkClient: SDKClient?
     private var hasRegisteredClient = false
     private var backgroundedAt: Date?
@@ -26,6 +27,7 @@ actor SessionManager {
         transport: any SessionTransporting,
         recordTransport: any RecordTransport,
         debugStore: ApxyDebugStore? = nil,
+        serverURL: String?,
         connectionStateTracker: ConnectionStateTracker,
         bufferCapacity: Int,
         recordDeliveryMode: RecordDeliveryMode,
@@ -35,11 +37,64 @@ actor SessionManager {
         self.transport = transport
         self.recordTransport = recordTransport
         self.debugStore = debugStore
+        self.currentServerURL = serverURL
         self.connectionStateTracker = connectionStateTracker
         self.sessionIdleTimeout = sessionIdleTimeout
         self.flushInterval = max(1, flushInterval)
         self.recordDeliveryMode = recordDeliveryMode
         self.buffer = RecordBuffer(capacity: bufferCapacity)
+    }
+
+    func reconfigure(
+        transport: any SessionTransporting,
+        recordTransport: any RecordTransport,
+        serverURL: String?,
+        recordDeliveryMode: RecordDeliveryMode,
+        flushInterval: TimeInterval
+    ) async {
+        let normalizedFlushInterval = max(1, flushInterval)
+        let oldRecordTransport = self.recordTransport
+        let previousHasRegisteredClient = hasRegisteredClient
+        let previousSessionID = currentSessionID
+
+        guard isRunning else {
+            self.transport = transport
+            self.recordTransport = recordTransport
+            self.currentServerURL = serverURL
+            self.flushInterval = normalizedFlushInterval
+            self.recordDeliveryMode = recordDeliveryMode
+            return
+        }
+        flushTask?.cancel()
+        flushTask = nil
+
+        await flushBufferedRecords()
+        await oldRecordTransport.stop()
+
+        self.transport = transport
+        self.recordTransport = recordTransport
+        self.currentServerURL = serverURL
+        self.flushInterval = normalizedFlushInterval
+        self.recordDeliveryMode = recordDeliveryMode
+
+        await recordTransport.start()
+        startFlushLoop()
+        isRunning = true
+
+        guard previousHasRegisteredClient else { return }
+        guard let sdkClient else { return }
+        do {
+            try await transport.registerClient(sdkClient)
+            await connectionStateTracker.reportServerEndpointSuccess()
+            hasRegisteredClient = true
+            currentSessionID = nil
+            await startNewSession()
+        } catch {
+            SDKLogger.warn("cannot reach server (reconfigure): \(error.localizedDescription)")
+            await connectionStateTracker.reportServerEndpointFailure(reason: error.localizedDescription)
+            hasRegisteredClient = previousHasRegisteredClient
+            currentSessionID = previousSessionID
+        }
     }
 
     func start() async {
@@ -201,14 +256,29 @@ actor SessionManager {
         guard isRunning, let sdkClient else { return }
 
         let sessionID = UUID().uuidString
+        let createdAt = Date()
+        let name = Self.defaultSessionName(createdAt: createdAt)
         currentSessionID = sessionID
 
         SDKLogger.debug("createSession sessionId=\(String(sessionID.prefix(8)))")
 
         let clientContext = context.toClientContext(networkType: connectionSnapshot.networkType)
+        if let debugStore {
+            await debugStore.beginSession(
+                id: sessionID,
+                name: name,
+                createdAt: createdAt,
+                sdkClient: sdkClient,
+                context: clientContext,
+                serverURL: currentServerURL,
+                isLiveManaged: currentServerURL != nil
+            )
+        }
         do {
             try await transport.createSession(
                 id: sessionID,
+                name: name,
+                createdAt: createdAt,
                 clientID: sdkClient.id,
                 context: clientContext
             )
@@ -223,6 +293,13 @@ actor SessionManager {
         guard isRunning, let currentSessionID else { return }
 
         let clientContext = context.toClientContext(networkType: connectionSnapshot.networkType)
+        if let debugStore {
+            await debugStore.updateSessionContext(
+                id: currentSessionID,
+                context: clientContext,
+                serverURL: currentServerURL
+            )
+        }
         do {
             try await transport.updateSessionContext(
                 id: currentSessionID,
@@ -314,8 +391,20 @@ actor SessionManager {
         let normalized = contentType.lowercased()
         return normalized.contains("json") || normalized.contains("+json")
     }
+
+    private static func defaultSessionName(createdAt: Date) -> String {
+        sessionNameFormatter.string(from: createdAt)
+    }
 }
 
 private func sleepNanoseconds(for duration: TimeInterval) -> UInt64 {
     UInt64(max(0, duration) * 1_000_000_000)
 }
+
+private let sessionNameFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "'SDK' yyyy-MM-dd HH:mm:ss"
+    return formatter
+}()

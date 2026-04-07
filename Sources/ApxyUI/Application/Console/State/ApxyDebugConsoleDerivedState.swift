@@ -14,28 +14,28 @@ struct ApxyDebugConsoleDerivedState {
 
     static func make(
         snapshot: ApxyDebugSnapshot,
+        scope: ApxyDebugConsoleScope,
         filterState: ApxyDebugConsoleFilterState,
-        selectedRecordID: String?,
-        isClearing: Bool
+        selectedRecordID: String?
     ) -> ApxyDebugConsoleDerivedState {
+        let scopedRecords = scope.scopedRecords(in: snapshot)
         let filteredRecords = ApxyDebugFilterEngine.filter(
-            records: snapshot.records,
+            records: scopedRecords,
             using: filterState.consoleFilter
         )
         let selection = resolveSelection(
             records: filteredRecords,
-            selectedRecordID: selectedRecordID,
-            isClearing: isClearing
+            selectedRecordID: selectedRecordID
         )
 
         return ApxyDebugConsoleDerivedState(
             records: filteredRecords,
             sessions: snapshot.sessions,
-            totalRecordCount: snapshot.records.count,
+            totalRecordCount: scopedRecords.count,
             visibleRecordCount: filteredRecords.count,
-            failureCount: snapshot.records.lazy.filter(\.isFailure).count,
-            hosts: Array(Set(snapshot.records.lazy.map(\.request.host))).sorted(),
-            methods: Array(Set(snapshot.records.lazy.map(\.request.method))).sorted(),
+            failureCount: scopedRecords.lazy.filter(\.isFailure).count,
+            hosts: Array(Set(scopedRecords.lazy.map(\.request.host))).sorted(),
+            methods: Array(Set(scopedRecords.lazy.map(\.request.method))).sorted(),
             selectedRecordID: selection.id,
             selectedRecord: selection.record
         )
@@ -43,13 +43,8 @@ struct ApxyDebugConsoleDerivedState {
 
     private static func resolveSelection(
         records: [ApxyDebugRecord],
-        selectedRecordID: String?,
-        isClearing: Bool
+        selectedRecordID: String?
     ) -> (id: String?, record: ApxyDebugRecord?) {
-        guard !isClearing else {
-            return (nil, nil)
-        }
-
         let availableIDs = Set(records.lazy.map(\.id))
         guard !availableIDs.isEmpty else {
             return (nil, nil)

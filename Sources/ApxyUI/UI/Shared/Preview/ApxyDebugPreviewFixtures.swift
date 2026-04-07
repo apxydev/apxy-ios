@@ -4,7 +4,7 @@ import ApxyCore
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
 enum ApxyDebugPreviewFixtures {
-    static let exportURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+    static let storeURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         .appendingPathComponent("apxy-preview-export.json")
 
     static let successRecord = makeRecord(
@@ -25,6 +25,54 @@ enum ApxyDebugPreviewFixtures {
             }
             """.utf8
         )
+    )
+
+    static let archiveListRecord = makeRecord(
+        id: "req-archive-list",
+        capturedAt: previewNow.addingTimeInterval(-330),
+        sessionID: "session-omega",
+        method: "GET",
+        host: "archive.apxy.dev",
+        path: "/v1/snapshots",
+        statusCode: 200,
+        duration: 0.31,
+        responseBody: Data(
+            """
+            {
+              "snapshots": [
+                { "id": "snap_001", "size": 2048 },
+                { "id": "snap_002", "size": 1024 }
+              ]
+            }
+            """.utf8
+        )
+    )
+
+    static let archiveRestoreRecord = makeRecord(
+        id: "req-archive-restore",
+        capturedAt: previewNow.addingTimeInterval(-300),
+        sessionID: "session-omega",
+        method: "POST",
+        host: "archive.apxy.dev",
+        path: "/v1/snapshots/snap_001/restore",
+        statusCode: 409,
+        duration: 0.67,
+        requestBody: Data(
+            """
+            {
+              "target": "staging"
+            }
+            """.utf8
+        ),
+        responseBody: Data(
+            """
+            {
+              "error": "conflict",
+              "message": "Snapshot is already mounted"
+            }
+            """.utf8
+        ),
+        error: .init(domain: "Preview", code: 409, message: "Snapshot already mounted")
     )
 
     static let redirectedRecord = makeRecord(
@@ -92,9 +140,207 @@ enum ApxyDebugPreviewFixtures {
         isMocked: true
     )
 
-    static let records = [mockedRecord, failedRecord, redirectedRecord, successRecord]
+    static let uploadRecord = makeRecord(
+        id: "req-upload",
+        capturedAt: previewNow.addingTimeInterval(-30),
+        sessionID: "session-gamma",
+        method: "PUT",
+        host: "uploads.apxy.dev",
+        path: "/v1/assets/avatar",
+        statusCode: 202,
+        duration: 2.36,
+        requestHeaders: [
+            "Accept": "application/json",
+            "Content-Encoding": "gzip",
+            "X-Preview": "true",
+        ],
+        requestBody: Data(repeating: 0x41, count: 32_768),
+        requestContentType: "image/jpeg",
+        responseBody: Data(
+            """
+            {
+              "jobId": "job_preview_123",
+              "state": "queued"
+            }
+            """.utf8
+        ),
+        responseHeaders: [
+            "Content-Type": "application/json",
+            "Retry-After": "3",
+            "X-Request-ID": "req-upload",
+        ]
+    )
+
+    static let unauthorizedRecord = makeRecord(
+        id: "req-unauthorized",
+        capturedAt: previewNow.addingTimeInterval(-15),
+        sessionID: "session-beta",
+        method: "POST",
+        host: "billing.apxy.dev",
+        path: "/v1/payment-intents",
+        statusCode: 401,
+        duration: 0.44,
+        requestBody: Data(
+            """
+            {
+              "amount": 4200,
+              "currency": "usd"
+            }
+            """.utf8
+        ),
+        responseBody: Data(
+            """
+            {
+              "error": "unauthorized",
+              "message": "API key is missing or invalid"
+            }
+            """.utf8
+        ),
+        error: .init(domain: "Preview", code: 401, message: "Unauthorized")
+    )
+
+    static let htmlRecord = makeRecord(
+        id: "req-status-page",
+        capturedAt: previewNow.addingTimeInterval(-5),
+        sessionID: "session-gamma",
+        method: "GET",
+        host: "status.apxy.dev",
+        path: "/incidents/latest",
+        statusCode: 200,
+        duration: 0.19,
+        responseBody: Data(
+            """
+            <html>
+              <body>
+                <h1>All systems operational</h1>
+                <p>No active incidents.</p>
+              </body>
+            </html>
+            """.utf8
+        ),
+        responseHeaders: [
+            "Cache-Control": "max-age=60",
+            "Content-Type": "text/html; charset=utf-8",
+            "X-Request-ID": "req-status-page",
+        ],
+        responseContentType: "text/html; charset=utf-8"
+    )
+
+    static let syncRecord = makeRecord(
+        id: "req-sync",
+        capturedAt: previewNow.addingTimeInterval(-12),
+        sessionID: "session-delta",
+        method: "GET",
+        host: "sync.apxy.dev",
+        path: "/v1/state",
+        statusCode: 200,
+        duration: 0.11,
+        responseBody: Data(
+            """
+            {
+              "cursor": "cur_842",
+              "pendingChanges": 3
+            }
+            """.utf8
+        )
+    )
+
+    static let checkoutRecord = makeRecord(
+        id: "req-checkout",
+        capturedAt: previewNow.addingTimeInterval(-9),
+        sessionID: "session-delta",
+        method: "POST",
+        host: "checkout.apxy.dev",
+        path: "/v1/orders",
+        statusCode: 202,
+        duration: 0.58,
+        requestBody: Data(
+            """
+            {
+              "cartId": "cart_preview",
+              "paymentMethod": "card"
+            }
+            """.utf8
+        ),
+        responseBody: Data(
+            """
+            {
+              "orderId": "ord_preview_42",
+              "state": "processing"
+            }
+            """.utf8
+        )
+    )
+
+    static let rateLimitedRecord = makeRecord(
+        id: "req-rate-limit",
+        capturedAt: previewNow.addingTimeInterval(-6),
+        sessionID: "session-delta",
+        method: "GET",
+        host: "search.apxy.dev",
+        path: "/v1/query?q=swiftui",
+        statusCode: 429,
+        duration: 0.23,
+        responseBody: Data(
+            """
+            {
+              "error": "rate_limited",
+              "retryAfter": 5
+            }
+            """.utf8
+        ),
+        responseHeaders: [
+            "Content-Type": "application/json",
+            "Retry-After": "5",
+            "X-Request-ID": "req-rate-limit",
+        ],
+        error: .init(domain: "Preview", code: 429, message: "Too many requests")
+    )
+
+    static let mockedProfileRecord = makeRecord(
+        id: "req-profile-mock",
+        capturedAt: previewNow.addingTimeInterval(-2),
+        sessionID: "session-delta",
+        method: "GET",
+        host: "profile.apxy.dev",
+        path: "/v1/me",
+        statusCode: 200,
+        duration: 0.03,
+        responseBody: Data(
+            """
+            {
+              "id": "usr_preview",
+              "tier": "pro"
+            }
+            """.utf8
+        ),
+        isMocked: true
+    )
+
+    static let records = [
+        mockedProfileRecord,
+        rateLimitedRecord,
+        checkoutRecord,
+        htmlRecord,
+        unauthorizedRecord,
+        syncRecord,
+        mockedRecord,
+        uploadRecord,
+        failedRecord,
+        redirectedRecord,
+        successRecord,
+        archiveRestoreRecord,
+        archiveListRecord,
+    ]
 
     static let sessions = [
+        ApxyDebugSession(
+            id: "session-omega",
+            startedAt: previewNow.addingTimeInterval(-360),
+            lastEventAt: previewNow.addingTimeInterval(-300),
+            requestCount: 2,
+            failureCount: 1
+        ),
         ApxyDebugSession(
             id: "session-alpha",
             startedAt: previewNow.addingTimeInterval(-240),
@@ -106,7 +352,21 @@ enum ApxyDebugPreviewFixtures {
             id: "session-beta",
             startedAt: previewNow.addingTimeInterval(-90),
             lastEventAt: previewNow,
+            requestCount: 3,
+            failureCount: 2
+        ),
+        ApxyDebugSession(
+            id: "session-gamma",
+            startedAt: previewNow.addingTimeInterval(-45),
+            lastEventAt: previewNow.addingTimeInterval(-5),
             requestCount: 2,
+            failureCount: 0
+        ),
+        ApxyDebugSession(
+            id: "session-delta",
+            startedAt: previewNow.addingTimeInterval(-14),
+            lastEventAt: previewNow.addingTimeInterval(-2),
+            requestCount: 4,
             failureCount: 1
         ),
     ]
@@ -119,7 +379,7 @@ enum ApxyDebugPreviewFixtures {
                 isEnabled: true,
                 memoryRecordLimit: 20,
                 persistedRecordLimit: 20,
-                storeURL: exportURL
+                storeURL: storeURL
             )
         )
     }
@@ -146,14 +406,25 @@ enum ApxyDebugPreviewFixtures {
         statusCode: Int,
         redirectCount: Int = 0,
         duration: TimeInterval = 0.24,
+        requestHeaders: [String: String] = [
+            "Accept": "application/json",
+            "X-Preview": "true",
+        ],
         requestBody: Data? = nil,
+        requestContentType: String? = "application/json",
         responseBody: Data?,
+        responseHeaders: [String: String]? = nil,
+        responseContentType: String? = "application/json",
         error: ApxyDebugRecord.ErrorInfo? = nil,
         metrics: ApxyDebugRecord.Metrics? = nil,
         isMocked: Bool = false
     ) -> ApxyDebugRecord {
         let url = "https://\(host)\(path)"
         let currentHeaders = currentURL == nil ? [:] : ["X-Redirected-By": "Preview Gateway"]
+        let resolvedResponseHeaders = responseHeaders ?? [
+            "Content-Type": responseContentType ?? "application/octet-stream",
+            "X-Request-ID": id,
+        ]
 
         return ApxyDebugRecord(
             id: id,
@@ -164,13 +435,10 @@ enum ApxyDebugPreviewFixtures {
                 url: url,
                 host: host,
                 path: path,
-                headers: [
-                    "Accept": "application/json",
-                    "X-Preview": "true",
-                ],
+                headers: requestHeaders,
                 body: requestBody,
                 bodySize: requestBody.map { Int64($0.count) },
-                contentType: requestBody == nil ? nil : "application/json",
+                contentType: requestBody == nil ? nil : requestContentType,
                 currentURL: currentURL,
                 currentHost: currentHost,
                 currentPath: currentPath,
@@ -178,13 +446,10 @@ enum ApxyDebugPreviewFixtures {
             ),
             response: .init(
                 statusCode: statusCode,
-                headers: [
-                    "Content-Type": "application/json",
-                    "X-Request-ID": id,
-                ],
+                headers: resolvedResponseHeaders,
                 body: responseBody,
                 bodySize: responseBody.map { Int64($0.count) },
-                contentType: "application/json"
+                contentType: responseContentType
             ),
             transfer: .init(
                 requestHeaderBytesSent: 142,

@@ -302,6 +302,47 @@ Apxy.setTag(key: "env", value: "staging")
 Apxy.setContext(key: "subscription", value: ["plan": "pro", "trial": false])
 ```
 
+## Runtime Reconfiguration
+
+You can update a running SDK instance without restarting the app:
+
+```swift
+Apxy.reconfigure(
+    ApxyRuntimeConfiguration(
+        serverURL: "http://192.168.1.5:8083",
+        flushInterval: 5.0,
+        capturedDomains: ["api.example.com", "*.example.com"]
+    )
+)
+```
+
+Read the active session-scoped values with:
+
+```swift
+let active = Apxy.activeRuntimeConfiguration
+```
+
+Notes:
+
+- runtime changes are session-only and are not persisted across restart
+- invalid `serverURL` input falls back to local-only mode immediately
+- the embedded `ApxyUI` debug console exposes the same fields in its runtime settings screen
+
+## Manual Session Sharing
+
+Local debug persistence now keeps session metadata as well as records. That lets you manually share older on-device sessions after switching to a valid `serverURL`.
+
+```swift
+let sessions = await Apxy.shareableLocalSessions()
+try await Apxy.shareLocalSession(id: sessions[0].id)
+```
+
+Notes:
+
+- this is for persisted older sessions, not the currently active live-managed session
+- manual sharing requires a valid active `serverURL`
+- sharing retries are safe because APXY Core now treats the uploaded SDK session as an idempotent upsert
+
 ## Custom `URLSessionConfiguration`
 
 If you use a custom session configuration and need explicit interception, insert `ApxyURLProtocol.self`.

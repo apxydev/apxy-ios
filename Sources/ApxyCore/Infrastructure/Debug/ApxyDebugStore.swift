@@ -2,43 +2,165 @@ import Foundation
 
 /// Actor-backed local store used by the embedded Apxy debug console.
 public actor ApxyDebugStore {
-    private struct SessionEntry: Sendable {
-        let capturedAt: Date
-        let isFailure: Bool
+    private enum StoreError: LocalizedError {
+        case sessionNotFound(String)
+        case sessionNotShareable(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .sessionNotFound(let id):
+                return "Local session '\(id)' was not found"
+            case .sessionNotShareable(let id):
+                return "Local session '\(id)' cannot be shared in its current state"
+            }
+        }
     }
 
-    private struct SessionBucket: Sendable {
-        var entries: [SessionEntry]
-        var failureCount: Int
+    private struct PersistedIndex: Codable {
+        var sessions: [ApxyLocalSession]
+    }
+
+    struct SessionSharePayload: Sendable {
+        let session: ApxyLocalSession
+        let records: [NetworkRecord]
     }
 
     public let options: ApxyDebugOptions
 
     private static let persistenceDebounceNanoseconds: UInt64 = 1_000_000_000
+    private static let indexFileName = "index.json"
+    private static let sessionsDirectoryName = "sessions"
+    private static let recordsFileName = "records.json"
+    private static let legacyFileName = "records.json"
 
-    private let fileURL: URL
-    private var persistedRecords: [ApxyDebugRecord]
-    private var sessionBucketsByID: [String: SessionBucket]
+    private let rootDirectoryURL: URL
+    private let sessionsDirectoryURL: URL
+    private let indexFileURL: URL
+    private let legacyFileURL: URL
+
+    private var persistedSessionsByID: [String: ApxyLocalSession]
+    private var persistedRecordsBySessionID: [String: [ApxyDebugRecord]]
     private var continuations: [UUID: AsyncStream<ApxyDebugSnapshot>.Continuation]
     private var persistTask: Task<Void, Never>?
     private var hasPendingPersistence = false
     private var persistWriteCount = 0
+    private var dirtySessionIDs: Set<String>
+    private var deletedSessionIDs: Set<String>
+    private var isIndexDirty = false
 
     public init(options: ApxyDebugOptions) {
         self.options = options
-        self.fileURL = Self.resolveStoreURL(options: options)
-        let loadedRecords = Self.loadPersistedRecords(from: fileURL)
-        let persistedLimit = max(1, options.persistedRecordLimit)
-        self.persistedRecords = Array(loadedRecords.prefix(persistedLimit))
-        self.sessionBucketsByID = Self.makeSessionBuckets(from: self.persistedRecords)
+
+        let rootDirectoryURL = Self.resolveStoreDirectoryURL(options: options)
+        self.rootDirectoryURL = rootDirectoryURL
+        self.sessionsDirectoryURL = rootDirectoryURL.appendingPathComponent(Self.sessionsDirectoryName, isDirectory: true)
+        self.indexFileURL = sessionsDirectoryURL.appendingPathComponent(Self.indexFileName, isDirectory: false)
+        self.legacyFileURL = rootDirectoryURL.appendingPathComponent(Self.legacyFileName, isDirectory: false)
+
+        let loaded = Self.loadPersistedState(
+            rootDirectoryURL: rootDirectoryURL,
+            sessionsDirectoryURL: self.sessionsDirectoryURL,
+            indexFileURL: self.indexFileURL,
+            legacyFileURL: self.legacyFileURL
+        )
+
+        var sessionsByID = loaded.sessionsByID
+        var recordsBySessionID = loaded.recordsBySessionID
+        Self.trimPersistedRecordsIfNeeded(
+            sessionsByID: &sessionsByID,
+            recordsBySessionID: &recordsBySessionID,
+            limit: Swift.max(1, options.persistedRecordLimit)
+        )
+
+        self.persistedSessionsByID = sessionsByID
+        self.persistedRecordsBySessionID = recordsBySessionID
         self.continuations = [:]
+        self.dirtySessionIDs = []
+        self.deletedSessionIDs = []
+    }
+
+    public func beginSession(
+        id: String,
+        name: String,
+        createdAt: Date,
+        sdkClient: SDKClient,
+        context: ClientContext,
+        serverURL: String?,
+        isLiveManaged: Bool
+    ) {
+        let existing = persistedSessionsByID[id]
+        persistedSessionsByID[id] = ApxyLocalSession(
+            id: id,
+            name: name,
+            createdAt: existing?.createdAt ?? createdAt,
+            lastEventAt: existing?.lastEventAt ?? createdAt,
+            requestCount: existing?.requestCount ?? 0,
+            failureCount: existing?.failureCount ?? 0,
+            syncState: isLiveManaged ? .liveManaged : .localOnly,
+            serverURL: serverURL,
+            lastSyncedAt: existing?.lastSyncedAt,
+            lastSyncError: nil,
+            sdkClient: sdkClient,
+            context: context
+        )
+        markSessionDirty(id)
+        broadcastSnapshot()
+    }
+
+    public func updateSessionContext(
+        id: String,
+        context: ClientContext,
+        serverURL: String?
+    ) {
+        guard var session = persistedSessionsByID[id] else { return }
+        session.context = context
+        if let serverURL {
+            session.serverURL = serverURL
+        }
+        persistedSessionsByID[id] = session
+        markSessionDirty(id)
+        broadcastSnapshot()
+    }
+
+    public func markSessionSyncState(
+        id: String,
+        state: ApxyLocalSessionSyncState,
+        serverURL: String?,
+        errorMessage: String?
+    ) {
+        guard var session = persistedSessionsByID[id] else { return }
+        session.syncState = state
+        if let serverURL {
+            session.serverURL = serverURL
+        }
+        switch state {
+        case .synced:
+            session.lastSyncedAt = Date()
+            session.lastSyncError = nil
+        case .failed:
+            session.lastSyncError = errorMessage
+        default:
+            if let errorMessage {
+                session.lastSyncError = errorMessage
+            } else if state != .syncing {
+                session.lastSyncError = nil
+            }
+        }
+        persistedSessionsByID[id] = session
+        markSessionDirty(id)
+        broadcastSnapshot()
     }
 
     public func append(_ record: ApxyDebugRecord) {
-        persistedRecords.insert(record, at: 0)
-        appendSessionEntry(for: record)
+        let sessionID = normalizedSessionID(for: record)
+        ensureImplicitSessionExists(for: record, sessionID: sessionID)
+
+        var records = persistedRecordsBySessionID[sessionID] ?? []
+        records.insert(record, at: 0)
+        persistedRecordsBySessionID[sessionID] = records
+        recalculateSessionStats(for: sessionID)
         trimPersistedRecordsIfNeeded()
-        schedulePersist()
+        markSessionDirty(sessionID)
         broadcastSnapshot()
     }
 
@@ -46,10 +168,14 @@ public actor ApxyDebugStore {
         persistTask?.cancel()
         persistTask = nil
         hasPendingPersistence = false
-        persistedRecords.removeAll(keepingCapacity: false)
-        sessionBucketsByID.removeAll(keepingCapacity: false)
+        persistedSessionsByID.removeAll(keepingCapacity: false)
+        persistedRecordsBySessionID.removeAll(keepingCapacity: false)
+        dirtySessionIDs.removeAll(keepingCapacity: false)
+        deletedSessionIDs.removeAll(keepingCapacity: false)
+        isIndexDirty = false
+
         do {
-            try FileManager.default.removeItem(at: fileURL)
+            try FileManager.default.removeItem(at: rootDirectoryURL)
         } catch CocoaError.fileNoSuchFile {
             // Ignore missing stores.
         } catch {
@@ -58,8 +184,41 @@ public actor ApxyDebugStore {
         broadcastSnapshot()
     }
 
+    public func deleteSession(id sessionID: String) {
+        guard persistedSessionsByID[sessionID] != nil || persistedRecordsBySessionID[sessionID] != nil else {
+            return
+        }
+
+        removeSession(sessionID)
+        broadcastSnapshot()
+    }
+
     public func snapshot() -> ApxyDebugSnapshot {
         makeSnapshot()
+    }
+
+    public func localSessions() -> [ApxyLocalSession] {
+        persistedSessionsByID.values.sorted { lhs, rhs in
+            if lhs.lastEventAt == rhs.lastEventAt {
+                return lhs.createdAt > rhs.createdAt
+            }
+            return lhs.lastEventAt > rhs.lastEventAt
+        }
+    }
+
+    public func shareableLocalSessions() -> [ApxyLocalSession] {
+        localSessions().filter(\.isShareable)
+    }
+
+    func loadSessionForSharing(id: String) throws -> SessionSharePayload {
+        guard let session = persistedSessionsByID[id] else {
+            throw StoreError.sessionNotFound(id)
+        }
+        guard session.isShareable else {
+            throw StoreError.sessionNotShareable(id)
+        }
+        let records = (persistedRecordsBySessionID[id] ?? []).map(\.networkRecord)
+        return SessionSharePayload(session: session, records: records)
     }
 
     func flush() async {
@@ -91,37 +250,122 @@ public actor ApxyDebugStore {
     }
 
     private func makeSnapshot() -> ApxyDebugSnapshot {
-        let records = Array(persistedRecords.prefix(max(1, options.memoryRecordLimit)))
-        return ApxyDebugSnapshot(
-            records: records,
-            sessions: makeSessions()
+        let records = Array(
+            persistedRecordsBySessionID.values
+                .flatMap { $0 }
+                .sorted { $0.capturedAt > $1.capturedAt }
+                .prefix(max(1, options.memoryRecordLimit))
+        )
+
+        let sessions = persistedSessionsByID.values
+            .map {
+                ApxyDebugSession(
+                    id: $0.id,
+                    startedAt: $0.createdAt,
+                    lastEventAt: $0.lastEventAt,
+                    requestCount: $0.requestCount,
+                    failureCount: $0.failureCount
+                )
+            }
+            .sorted { $0.lastEventAt > $1.lastEventAt }
+
+        return ApxyDebugSnapshot(records: records, sessions: sessions)
+    }
+
+    private func ensureImplicitSessionExists(for record: ApxyDebugRecord, sessionID: String) {
+        guard persistedSessionsByID[sessionID] == nil else { return }
+
+        let createdAt = record.capturedAt
+        persistedSessionsByID[sessionID] = ApxyLocalSession(
+            id: sessionID,
+            name: Self.defaultSessionName(for: sessionID, createdAt: createdAt),
+            createdAt: createdAt,
+            lastEventAt: createdAt,
+            requestCount: 0,
+            failureCount: 0,
+            syncState: .localOnly
         )
     }
 
-    private func makeSessions() -> [ApxyDebugSession] {
-        sessionBucketsByID.compactMap { key, bucket in
-            guard let newest = bucket.entries.first, let oldest = bucket.entries.last else { return nil }
-            return ApxyDebugSession(
-                id: key,
-                startedAt: oldest.capturedAt,
-                lastEventAt: newest.capturedAt,
-                requestCount: bucket.entries.count,
-                failureCount: bucket.failureCount
-            )
+    private func recalculateSessionStats(for sessionID: String) {
+        guard var session = persistedSessionsByID[sessionID] else { return }
+        let records = persistedRecordsBySessionID[sessionID] ?? []
+
+        guard let newest = records.first, let oldest = records.last else {
+            removeSession(sessionID)
+            return
         }
-        .sorted { $0.lastEventAt > $1.lastEventAt }
+
+        session.createdAt = oldest.capturedAt
+        session.lastEventAt = newest.capturedAt
+        session.requestCount = records.count
+        session.failureCount = records.reduce(into: 0) { partialResult, record in
+            if record.isFailure {
+                partialResult += 1
+            }
+        }
+        persistedSessionsByID[sessionID] = session
     }
 
     private func trimPersistedRecordsIfNeeded() {
-        let limit = max(1, options.persistedRecordLimit)
-        while persistedRecords.count > limit {
-            let removed = persistedRecords.removeLast()
-            removeSessionEntry(for: removed)
+        let originalSessionIDs = Set(persistedSessionsByID.keys)
+        Self.trimPersistedRecordsIfNeeded(
+            sessionsByID: &persistedSessionsByID,
+            recordsBySessionID: &persistedRecordsBySessionID,
+            limit: Swift.max(1, options.persistedRecordLimit)
+        )
+
+        let updatedSessionIDs = Set(persistedSessionsByID.keys)
+        let changedSessionIDs = originalSessionIDs.union(updatedSessionIDs)
+        for sessionID in changedSessionIDs {
+            if originalSessionIDs.contains(sessionID), !updatedSessionIDs.contains(sessionID) {
+                deletedSessionIDs.insert(sessionID)
+                dirtySessionIDs.remove(sessionID)
+                isIndexDirty = true
+                hasPendingPersistence = true
+                schedulePersist()
+                continue
+            }
+            if updatedSessionIDs.contains(sessionID) {
+                markSessionDirty(sessionID)
+            }
         }
     }
 
-    private func schedulePersist() {
+    private var totalPersistedRecordCount: Int {
+        persistedRecordsBySessionID.values.reduce(into: 0) { partialResult, records in
+            partialResult += records.count
+        }
+    }
+
+    private func oldestSessionID() -> String? {
+        persistedRecordsBySessionID
+            .compactMap { sessionID, records in
+                records.last.map { (sessionID, $0.capturedAt) }
+            }
+            .min { lhs, rhs in lhs.1 < rhs.1 }
+            .map(\.0)
+    }
+
+    private func markSessionDirty(_ sessionID: String) {
+        dirtySessionIDs.insert(sessionID)
+        deletedSessionIDs.remove(sessionID)
+        isIndexDirty = true
         hasPendingPersistence = true
+        schedulePersist()
+    }
+
+    private func removeSession(_ sessionID: String) {
+        persistedSessionsByID.removeValue(forKey: sessionID)
+        persistedRecordsBySessionID.removeValue(forKey: sessionID)
+        deletedSessionIDs.insert(sessionID)
+        dirtySessionIDs.remove(sessionID)
+        isIndexDirty = true
+        hasPendingPersistence = true
+        schedulePersist()
+    }
+
+    private func schedulePersist() {
         guard persistTask == nil else { return }
 
         persistTask = Task { [weak self] in
@@ -141,22 +385,78 @@ public actor ApxyDebugStore {
 
     private func flushPersistenceIfNeeded() {
         guard hasPendingPersistence else { return }
-        hasPendingPersistence = false
+
+        let dirtySessionIDs = self.dirtySessionIDs
+        let deletedSessionIDs = self.deletedSessionIDs
+        let shouldWriteIndex = isIndexDirty
+        let sessions = persistedSessionsByID.values.sorted { lhs, rhs in
+            if lhs.createdAt == rhs.createdAt {
+                return lhs.id < rhs.id
+            }
+            return lhs.createdAt < rhs.createdAt
+        }
 
         do {
-            let directory = fileURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(
-                at: directory,
+                at: sessionsDirectoryURL,
                 withIntermediateDirectories: true,
                 attributes: nil
             )
+
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(persistedRecords)
-            try data.write(to: fileURL, options: [.atomic])
+
+            if shouldWriteIndex {
+                let indexData = try encoder.encode(PersistedIndex(sessions: sessions))
+                try indexData.write(to: indexFileURL, options: [.atomic])
+            }
+
+            for sessionID in dirtySessionIDs {
+                let sessionDirectoryURL = Self.sessionDirectoryURL(
+                    baseURL: sessionsDirectoryURL,
+                    sessionID: sessionID
+                )
+                try FileManager.default.createDirectory(
+                    at: sessionDirectoryURL,
+                    withIntermediateDirectories: true,
+                    attributes: nil
+                )
+                let recordsFileURL = sessionDirectoryURL.appendingPathComponent(Self.recordsFileName, isDirectory: false)
+                let records = persistedRecordsBySessionID[sessionID] ?? []
+                let recordData = try encoder.encode(records)
+                try recordData.write(to: recordsFileURL, options: [.atomic])
+            }
+
+            for sessionID in deletedSessionIDs {
+                let sessionDirectoryURL = Self.sessionDirectoryURL(
+                    baseURL: sessionsDirectoryURL,
+                    sessionID: sessionID
+                )
+                do {
+                    try FileManager.default.removeItem(at: sessionDirectoryURL)
+                } catch CocoaError.fileNoSuchFile {
+                }
+            }
+
+            do {
+                try FileManager.default.removeItem(at: legacyFileURL)
+            } catch CocoaError.fileNoSuchFile {
+            }
+
+            hasPendingPersistence = false
+            self.dirtySessionIDs.subtract(dirtySessionIDs)
+            self.deletedSessionIDs.subtract(deletedSessionIDs)
+            if shouldWriteIndex {
+                isIndexDirty = false
+            }
             persistWriteCount += 1
         } catch {
             hasPendingPersistence = true
+            self.dirtySessionIDs.formUnion(dirtySessionIDs)
+            self.deletedSessionIDs.formUnion(deletedSessionIDs)
+            if shouldWriteIndex {
+                isIndexDirty = true
+            }
             SDKLogger.warn("ApxyDebugStore failed persisting store: \(error.localizedDescription)")
         }
     }
@@ -168,9 +468,19 @@ public actor ApxyDebugStore {
         }
     }
 
-    private static func resolveStoreURL(options: ApxyDebugOptions) -> URL {
+    private func normalizedSessionID(for record: ApxyDebugRecord) -> String {
+        guard let sessionID = record.sessionID, !sessionID.isEmpty else {
+            return "unsessioned"
+        }
+        return sessionID
+    }
+
+    private static func resolveStoreDirectoryURL(options: ApxyDebugOptions) -> URL {
         if let storeURL = options.storeURL {
-            return storeURL
+            if storeURL.hasDirectoryPath || storeURL.pathExtension.isEmpty {
+                return storeURL
+            }
+            return storeURL.deletingLastPathComponent()
         }
 
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -178,57 +488,197 @@ public actor ApxyDebugStore {
         return baseURL
             .appendingPathComponent("ApxyCore", isDirectory: true)
             .appendingPathComponent("DebugConsole", isDirectory: true)
-            .appendingPathComponent("records.json", isDirectory: false)
     }
 
-    private static func loadPersistedRecords(from fileURL: URL) -> [ApxyDebugRecord] {
-        guard let data = try? Data(contentsOf: fileURL) else {
-            return []
+    private static func sessionDirectoryURL(baseURL: URL, sessionID: String) -> URL {
+        baseURL.appendingPathComponent(sessionID, isDirectory: true)
+    }
+
+    private static func defaultSessionName(for sessionID: String, createdAt: Date) -> String {
+        if sessionID == "unsessioned" {
+            return "Unsessioned"
+        }
+        return "SDK \(timestampFormatter.string(from: createdAt))"
+    }
+
+    private static func loadPersistedState(
+        rootDirectoryURL: URL,
+        sessionsDirectoryURL: URL,
+        indexFileURL: URL,
+        legacyFileURL: URL
+    ) -> (
+        sessionsByID: [String: ApxyLocalSession],
+        recordsBySessionID: [String: [ApxyDebugRecord]]
+    ) {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        guard let indexData = try? Data(contentsOf: indexFileURL),
+              let index = try? decoder.decode(PersistedIndex.self, from: indexData) else {
+            return loadLegacyState(legacyFileURL: legacyFileURL)
+        }
+
+        var sessionsByID: [String: ApxyLocalSession] = [:]
+        var recordsBySessionID: [String: [ApxyDebugRecord]] = [:]
+
+        for session in index.sessions {
+            sessionsByID[session.id] = session
+
+            let recordsFileURL = sessionDirectoryURL(baseURL: sessionsDirectoryURL, sessionID: session.id)
+                .appendingPathComponent(Self.recordsFileName, isDirectory: false)
+            guard let recordData = try? Data(contentsOf: recordsFileURL),
+                  let records = try? decoder.decode([ApxyDebugRecord].self, from: recordData) else {
+                recordsBySessionID[session.id] = []
+                continue
+            }
+            recordsBySessionID[session.id] = records.sorted { $0.capturedAt > $1.capturedAt }
+        }
+
+        return (sessionsByID, recordsBySessionID)
+    }
+
+    private static func loadLegacyState(
+        legacyFileURL: URL
+    ) -> (
+        sessionsByID: [String: ApxyLocalSession],
+        recordsBySessionID: [String: [ApxyDebugRecord]]
+    ) {
+        guard let data = try? Data(contentsOf: legacyFileURL) else {
+            return ([:], [:])
         }
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let records = try? decoder.decode([ApxyDebugRecord].self, from: data) else {
-            return []
+            return ([:], [:])
         }
-        return records.sorted { $0.capturedAt > $1.capturedAt }
+
+        let sortedRecords = records.sorted { $0.capturedAt > $1.capturedAt }
+        var sessionsByID: [String: ApxyLocalSession] = [:]
+        var recordsBySessionID: [String: [ApxyDebugRecord]] = [:]
+
+        for record in sortedRecords {
+            let sessionID = record.sessionID?.isEmpty == false ? record.sessionID! : "unsessioned"
+            recordsBySessionID[sessionID, default: []].append(record)
+        }
+
+        for (sessionID, sessionRecords) in recordsBySessionID {
+            guard let newest = sessionRecords.first, let oldest = sessionRecords.last else { continue }
+            sessionsByID[sessionID] = ApxyLocalSession(
+                id: sessionID,
+                name: defaultSessionName(for: sessionID, createdAt: oldest.capturedAt),
+                createdAt: oldest.capturedAt,
+                lastEventAt: newest.capturedAt,
+                requestCount: sessionRecords.count,
+                failureCount: sessionRecords.reduce(into: 0) { partialResult, record in
+                    if record.isFailure {
+                        partialResult += 1
+                    }
+                },
+                syncState: .localOnly
+            )
+        }
+
+        return (sessionsByID, recordsBySessionID)
     }
 
-    private static func makeSessionBuckets(from records: [ApxyDebugRecord]) -> [String: SessionBucket] {
-        var bucketsByID: [String: SessionBucket] = [:]
-        for record in records {
-            let sessionID = record.sessionID ?? "unsessioned"
-            var bucket = bucketsByID[sessionID] ?? SessionBucket(entries: [], failureCount: 0)
-            bucket.entries.append(SessionEntry(capturedAt: record.capturedAt, isFailure: record.isFailure))
-            if record.isFailure {
-                bucket.failureCount += 1
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter
+    }()
+
+    private static func trimPersistedRecordsIfNeeded(
+        sessionsByID: inout [String: ApxyLocalSession],
+        recordsBySessionID: inout [String: [ApxyDebugRecord]],
+        limit: Int
+    ) {
+        func recalculateSessionStats(_ sessionID: String) {
+            guard var session = sessionsByID[sessionID] else { return }
+            let records = recordsBySessionID[sessionID] ?? []
+
+            guard let newest = records.first, let oldest = records.last else {
+                sessionsByID.removeValue(forKey: sessionID)
+                recordsBySessionID.removeValue(forKey: sessionID)
+                return
             }
-            bucketsByID[sessionID] = bucket
-        }
-        return bucketsByID
-    }
 
-    private func appendSessionEntry(for record: ApxyDebugRecord) {
-        let sessionID = record.sessionID ?? "unsessioned"
-        var bucket = sessionBucketsByID[sessionID] ?? SessionBucket(entries: [], failureCount: 0)
-        bucket.entries.insert(SessionEntry(capturedAt: record.capturedAt, isFailure: record.isFailure), at: 0)
-        if record.isFailure {
-            bucket.failureCount += 1
+            session.createdAt = oldest.capturedAt
+            session.lastEventAt = newest.capturedAt
+            session.requestCount = records.count
+            session.failureCount = records.reduce(into: 0) { partialResult, record in
+                if record.isFailure {
+                    partialResult += 1
+                }
+            }
+            sessionsByID[sessionID] = session
         }
-        sessionBucketsByID[sessionID] = bucket
-    }
 
-    private func removeSessionEntry(for record: ApxyDebugRecord) {
-        let sessionID = record.sessionID ?? "unsessioned"
-        guard var bucket = sessionBucketsByID[sessionID], !bucket.entries.isEmpty else { return }
-        let removedEntry = bucket.entries.removeLast()
-        if removedEntry.isFailure {
-            bucket.failureCount = max(0, bucket.failureCount - 1)
+        func totalRecordCount() -> Int {
+            recordsBySessionID.values.reduce(into: 0) { partialResult, records in
+                partialResult += records.count
+            }
         }
-        if bucket.entries.isEmpty {
-            sessionBucketsByID.removeValue(forKey: sessionID)
-        } else {
-            sessionBucketsByID[sessionID] = bucket
+
+        func oldestSessionID() -> String? {
+            recordsBySessionID
+                .compactMap { sessionID, records in
+                    records.last.map { (sessionID, $0.capturedAt) }
+                }
+                .min { lhs, rhs in lhs.1 < rhs.1 }
+                .map(\.0)
         }
+
+        while totalRecordCount() > limit {
+            guard let sessionID = oldestSessionID() else { break }
+            guard var records = recordsBySessionID[sessionID], !records.isEmpty else { break }
+            _ = records.removeLast()
+            if records.isEmpty {
+                recordsBySessionID.removeValue(forKey: sessionID)
+            } else {
+                recordsBySessionID[sessionID] = records
+            }
+            recalculateSessionStats(sessionID)
+        }
+    }
+}
+
+private extension ApxyDebugRecord {
+    var networkRecord: NetworkRecord {
+        NetworkRecord(
+            id: id,
+            timestamp: capturedAt,
+            method: request.method,
+            url: request.url,
+            host: request.host,
+            path: request.path,
+            requestHeaders: request.headers,
+            requestBody: request.body,
+            requestBodySource: nil,
+            requestBodySize: request.bodySize,
+            requestContentType: request.contentType,
+            finalURL: request.currentURL,
+            finalHost: request.currentHost,
+            finalPath: request.currentPath,
+            finalRequestHeaders: request.currentHeaders,
+            statusCode: response?.statusCode ?? (error != nil ? -1 : 0),
+            responseHeaders: response?.headers,
+            responseBody: response?.body,
+            responseBodySize: response?.bodySize,
+            responseContentType: response?.contentType,
+            redirectCount: redirectCount,
+            requestHeaderBytesSent: transfer.requestHeaderBytesSent,
+            requestBodyBytesBeforeEncoding: transfer.requestBodyBytesBeforeEncoding,
+            requestBodyBytesSent: transfer.requestBodyBytesSent,
+            responseHeaderBytesReceived: transfer.responseHeaderBytesReceived,
+            responseBodyBytesReceived: transfer.responseBodyBytesReceived,
+            responseBodyBytesAfterDecoding: transfer.responseBodyBytesAfterDecoding,
+            duration: Int64(duration * 1_000_000_000),
+            tls: isTLS,
+            mocked: isMocked,
+            sessionID: sessionID
+        )
     }
 }

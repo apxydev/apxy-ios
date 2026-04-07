@@ -5,6 +5,7 @@ struct ApxyDebugConsoleSummaryBar: View {
     let totalCount: Int
     let failureCount: Int
     @Binding var selectedStatus: ApxyDebugStatusFilter
+    @Environment(\.colorScheme) private var colorScheme
 
     private var successCount: Int {
         totalCount - failureCount
@@ -14,14 +15,14 @@ struct ApxyDebugConsoleSummaryBar: View {
         ViewThatFits {
             HStack(spacing: 8) {
                 modeButton(.all, title: "All", count: totalCount)
-                modeButton(.failures, title: "Errors", count: failureCount, tint: .red)
-                modeButton(.successes, title: "OK", count: successCount, tint: .green)
+                modeButton(.failures, title: "Errors", count: failureCount, tone: .error)
+                modeButton(.successes, title: "OK", count: successCount, tone: .success)
             }
             VStack(alignment: .leading, spacing: 8) {
                 modeButton(.all, title: "All", count: totalCount)
                 HStack(spacing: 8) {
-                    modeButton(.failures, title: "Errors", count: failureCount, tint: .red)
-                    modeButton(.successes, title: "OK", count: successCount, tint: .green)
+                    modeButton(.failures, title: "Errors", count: failureCount, tone: .error)
+                    modeButton(.successes, title: "OK", count: successCount, tone: .success)
                 }
             }
         }
@@ -32,9 +33,11 @@ struct ApxyDebugConsoleSummaryBar: View {
         _ filter: ApxyDebugStatusFilter,
         title: String,
         count: Int,
-        tint: Color = .accentColor
+        tone: ApxyDebugThemeTone = .accent
     ) -> some View {
         let isSelected = selectedStatus == filter
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+        let tint = tone.color(in: theme)
 
         return Button {
             selectedStatus = filter
@@ -49,16 +52,16 @@ struct ApxyDebugConsoleSummaryBar: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
-            .foregroundStyle(isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+            .foregroundStyle(isSelected ? AnyShapeStyle(theme.textPrimary) : AnyShapeStyle(theme.textSecondary))
             .background(
                 isSelected
                     ? AnyShapeStyle(tint.opacity(0.18))
-                    : AnyShapeStyle(ApxyDebugChrome.subtleFill),
+                    : AnyShapeStyle(ApxyDebugChrome.elevatedFill(in: theme)),
                 in: RoundedRectangle(cornerRadius: ApxyDebugChrome.controlCornerRadius, style: .continuous)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: ApxyDebugChrome.controlCornerRadius, style: .continuous)
-                    .stroke(isSelected ? tint.opacity(0.3) : ApxyDebugChrome.subtleStroke)
+                    .stroke(isSelected ? tint.opacity(0.48) : ApxyDebugChrome.subtleStroke(in: theme))
             }
         }
         .buttonStyle(.plain)

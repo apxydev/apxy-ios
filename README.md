@@ -54,7 +54,8 @@ Apxy.start(serverURL: "http://<your-mac-lan-ip>:8083")
 
 APXY is a local HTTP/HTTPS debugging proxy and traffic inspection tool for developers and AI coding agents. It lets you capture, inspect, mock, replay, and diff traffic from a CLI and Web UI.
 
-- APXY GitHub: https://github.com/apxydev/apxy
+- GitHub: https://github.com/apxydev/apxy
+- Website: https://apxy.dev
 
 ## Embedded Debug Console
 
@@ -64,14 +65,14 @@ import ApxyUI
 
 struct DebugScreen: View {
     var body: some View {
-        NavigationStack {
-            ApxyDebugConsoleContainer()
-        }
+        ApxyDebugConsoleContainer()
     }
 }
 ```
 
 If you want full manual control, you can still configure `debugConsole` explicitly through `ApxyOptions`.
+
+The embedded console also includes a runtime settings screen for temporary debug-session changes like `serverURL`, `flushInterval`, and `capturedDomains`.
 
 ## Documentation
 

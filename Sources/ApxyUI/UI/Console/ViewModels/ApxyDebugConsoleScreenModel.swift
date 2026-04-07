@@ -5,19 +5,22 @@ import ApxyCore
 @MainActor
 final class ApxyDebugConsoleScreenModel: ObservableObject {
     let viewModel: ApxyDebugConsoleViewModel
+    private let scope: ApxyDebugConsoleScope
     private let navigationModel = ApxyDebugNavigationModel()
     private var changeCancellables: Set<AnyCancellable> = []
 
-    init(store: ApxyDebugStore) {
-        self.viewModel = ApxyDebugConsoleViewModel(store: store)
+    init(
+        store: ApxyDebugStore,
+        scope: ApxyDebugConsoleScope
+    ) {
+        self.scope = scope
+        self.viewModel = ApxyDebugConsoleViewModel(store: store, scope: scope)
         bindChildChanges()
     }
 
     var records: [ApxyDebugRecord] { viewModel.records }
     var selectedRecordID: String? { viewModel.selectedRecordID }
     var selectedRecord: ApxyDebugRecord? { viewModel.selectedRecord }
-    var exportError: String? { viewModel.exportError }
-    var exportURL: URL? { viewModel.exportURL }
     var totalRecordCount: Int { viewModel.totalRecordCount }
     var visibleRecordCount: Int { viewModel.visibleRecordCount }
     var failureCount: Int { viewModel.failureCount }
@@ -26,8 +29,26 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
     var sessions: [ApxyDebugSession] { viewModel.sessions }
     var hosts: [String] { viewModel.hosts }
     var methods: [String] { viewModel.methods }
-    var compactPath: [ApxyDebugConsoleRoute] { navigationModel.compactPath }
     var compactRecordID: String? { navigationModel.compactRecordID }
+    var isShowingCompactDetail: Bool { navigationModel.isShowingCompactDetail }
+    var showsSessionFilter: Bool { scope.allowsSessionSelection }
+
+    var selectedScopeSession: ApxyDebugSession? {
+        guard let sessionID = scope.resolvedSessionID(in: viewModel.snapshot) else { return nil }
+        return sessions.first(where: { $0.id == sessionID })
+    }
+
+    var navigationTitle: String {
+        switch scope {
+        case .all:
+            return "Requests"
+        case .activeSession:
+            return "Live Traffic"
+        case let .session(sessionID):
+            let titleID = selectedScopeSession?.id ?? sessionID
+            return "Session \(String(titleID.prefix(8)))"
+        }
+    }
 
     var searchTextBinding: Binding<String> {
         Binding(
@@ -64,10 +85,10 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
         )
     }
 
-    var compactPathBinding: Binding<[ApxyDebugConsoleRoute]> {
+    var compactDetailPresentedBinding: Binding<Bool> {
         Binding(
-            get: { self.navigationModel.compactPath },
-            set: { self.navigationModel.compactPath = $0 }
+            get: { self.navigationModel.isShowingCompactDetail },
+            set: { self.navigationModel.setCompactDetailPresented($0) }
         )
     }
 
@@ -81,16 +102,8 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
         )
     }
 
-    func dismissExportError() {
-        viewModel.dismissExportError()
-    }
-
     func resetFilters() {
         viewModel.resetFilters()
-    }
-
-    func prepareExport() {
-        viewModel.prepareExport()
     }
 
     func clearRecords() {
@@ -102,6 +115,11 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
         navigationModel.record(for: route, in: viewModel.records)
     }
 
+    var compactSelectedRecord: ApxyDebugRecord? {
+        guard let compactRecordID else { return nil }
+        return viewModel.records.first(where: { $0.id == compactRecordID })
+    }
+
     func selectRecord(_ record: ApxyDebugRecord, usesCompactNavigation: Bool) {
         viewModel.selectedRecordID = record.id
         navigationModel.showRecord(record.id, usesCompactNavigation: usesCompactNavigation)
@@ -110,14 +128,6 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
     func syncRegularSelectionIfNeeded(usesCompactNavigation: Bool) {
         guard !usesCompactNavigation else { return }
         navigationModel.syncRegularSelection(viewModel.selectedRecordID)
-    }
-
-    func syncCompactSelectionIfNeeded(usesCompactNavigation: Bool) {
-        guard usesCompactNavigation else { return }
-        if let compactRecordID,
-           compactRecordID != viewModel.selectedRecordID {
-            viewModel.selectedRecordID = compactRecordID
-        }
     }
 
     func reconcileNavigation(usesCompactNavigation: Bool) {

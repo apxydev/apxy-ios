@@ -3,19 +3,24 @@ import ApxyCore
 
 @MainActor
 final class ApxyDebugNavigationModel: ObservableObject {
-    @Published var compactPath: [ApxyDebugConsoleRoute] = []
+    @Published private(set) var compactRecordID: String?
+    @Published private(set) var isShowingCompactDetail = false
     @Published private(set) var regularSelectionID: String?
-
-    var compactRecordID: String? {
-        compactPath.last?.recordID
-    }
 
     func showRecord(_ recordID: String, usesCompactNavigation: Bool) {
         if usesCompactNavigation {
-            compactPath = [.record(recordID)]
+            compactRecordID = recordID
+            isShowingCompactDetail = true
             return
         }
         regularSelectionID = recordID
+    }
+
+    func setCompactDetailPresented(_ isPresented: Bool) {
+        isShowingCompactDetail = isPresented
+        if !isPresented {
+            compactRecordID = nil
+        }
     }
 
     func syncRegularSelection(_ recordID: String?) {
@@ -27,7 +32,7 @@ final class ApxyDebugNavigationModel: ObservableObject {
         let availableIDs = Set(records.map(\.id))
 
         if let compactRecordID, !availableIDs.contains(compactRecordID) {
-            compactPath.removeAll()
+            setCompactDetailPresented(false)
         }
 
         guard !records.isEmpty else {
@@ -50,7 +55,7 @@ final class ApxyDebugNavigationModel: ObservableObject {
     }
 
     func clear() {
-        compactPath.removeAll()
+        setCompactDetailPresented(false)
         regularSelectionID = nil
     }
 }

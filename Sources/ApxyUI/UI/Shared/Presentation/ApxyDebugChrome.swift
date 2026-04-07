@@ -7,7 +7,24 @@ enum ApxyDebugChrome {
     static let controlCornerRadius: CGFloat = 10
     static let cardCornerRadius: CGFloat = 14
     static let contentPadding: CGFloat = 14
-    static let subtleFill = Color.secondary.opacity(0.09)
-    static let selectedFill = Color.accentColor.opacity(0.14)
-    static let subtleStroke = Color.primary.opacity(0.06)
+
+    static func subtleFill(in theme: ApxyDebugThemePalette) -> Color {
+        theme.surface
+    }
+
+    static func elevatedFill(in theme: ApxyDebugThemePalette) -> Color {
+        theme.surfaceElevated
+    }
+
+    static func terminalFill(in theme: ApxyDebugThemePalette) -> Color {
+        theme.terminalSurface
+    }
+
+    static func selectedFill(in theme: ApxyDebugThemePalette) -> Color {
+        theme.selection
+    }
+
+    static func subtleStroke(in theme: ApxyDebugThemePalette) -> Color {
+        theme.border
+    }
 }

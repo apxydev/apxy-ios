@@ -7,13 +7,16 @@ struct ApxyDebugRecordDetailView: View {
 
     @State private var toastMessage: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
         List {
             Section {
                 headerCard
             }
-            .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 8, trailing: 0))
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowBackground(Color.clear)
 
             Section("Summary") {
@@ -37,6 +40,7 @@ struct ApxyDebugRecordDetailView: View {
                     }
                 }
             }
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
 
             ForEach(requestSections) { requestSection in
                 Section(requestSection.sectionTitle) {
@@ -56,7 +60,7 @@ struct ApxyDebugRecordDetailView: View {
                     } label: {
                         ApxyDebugInspectorRow(
                             icon: "list.bullet.rectangle.portrait.fill",
-                            tint: .secondary,
+                            tint: theme.textSecondary,
                             title: requestSection.headersTitle,
                             detail: "\(requestSection.headers.count)",
                             isEnabled: !requestSection.headers.isEmpty
@@ -69,13 +73,14 @@ struct ApxyDebugRecordDetailView: View {
                     } label: {
                         ApxyDebugInspectorRow(
                             icon: "arrow.up.circle.fill",
-                            tint: .blue,
+                            tint: theme.accent,
                             title: requestSection.bodyTitle,
                             detail: requestBodySummary,
                             isEnabled: true
                         )
                     }
                 }
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
 
             Section("Cookies") {
@@ -85,7 +90,7 @@ struct ApxyDebugRecordDetailView: View {
                     } label: {
                         ApxyDebugInspectorRow(
                             icon: "lock.square.stack.fill",
-                            tint: .secondary,
+                            tint: theme.textSecondary,
                             title: requestSection.cookiesTitle,
                             detail: "\(requestSection.cookies.count)",
                             isEnabled: !requestSection.cookies.isEmpty
@@ -99,7 +104,7 @@ struct ApxyDebugRecordDetailView: View {
                 } label: {
                     ApxyDebugInspectorRow(
                         icon: "lock.square.stack.fill",
-                        tint: .secondary,
+                        tint: theme.textSecondary,
                         title: "Response Cookies",
                         detail: "\(responseCookies.count)",
                         isEnabled: !responseCookies.isEmpty
@@ -107,6 +112,7 @@ struct ApxyDebugRecordDetailView: View {
                 }
                 .disabled(responseCookies.isEmpty)
             }
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
 
             Section("Response") {
                 if let response = record.response {
@@ -126,7 +132,7 @@ struct ApxyDebugRecordDetailView: View {
                     } label: {
                         ApxyDebugInspectorRow(
                             icon: "text.append",
-                            tint: .secondary,
+                            tint: theme.textSecondary,
                             title: "Response Headers",
                             detail: "\(response.headers.count)",
                             isEnabled: !response.headers.isEmpty
@@ -139,7 +145,7 @@ struct ApxyDebugRecordDetailView: View {
                     } label: {
                         ApxyDebugInspectorRow(
                             icon: "arrow.down.circle.fill",
-                            tint: .indigo,
+                            tint: theme.accentHover,
                             title: "Response Body",
                             detail: responseBodySummary,
                             isEnabled: true
@@ -152,7 +158,7 @@ struct ApxyDebugRecordDetailView: View {
                         } label: {
                             ApxyDebugInspectorRow(
                                 icon: "curlybraces",
-                                tint: .indigo,
+                                tint: theme.accentHover,
                                 title: "Copy JSON",
                                 detail: "",
                                 isEnabled: true
@@ -162,9 +168,10 @@ struct ApxyDebugRecordDetailView: View {
                     }
                 } else {
                     Text("No response captured")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             }
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
 
             Section("Actions") {
                 Button {
@@ -172,7 +179,7 @@ struct ApxyDebugRecordDetailView: View {
                 } label: {
                     ApxyDebugInspectorRow(
                         icon: "terminal.fill",
-                        tint: .secondary,
+                        tint: theme.textSecondary,
                         title: "Copy cURL",
                         detail: ""
                     )
@@ -185,7 +192,7 @@ struct ApxyDebugRecordDetailView: View {
                     } label: {
                         ApxyDebugInspectorRow(
                             icon: "chart.xyaxis.line",
-                            tint: .orange,
+                            tint: theme.warning,
                             title: "Metrics Timeline",
                             detail: "\(record.metrics?.transactions.count ?? 0)"
                         )
@@ -198,16 +205,19 @@ struct ApxyDebugRecordDetailView: View {
                     } label: {
                         ApxyDebugInspectorRow(
                             icon: "exclamationmark.octagon.fill",
-                            tint: .red,
+                            tint: theme.error,
                             title: "Error Details",
                             detail: ""
                         )
                     }
                 }
             }
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         }
         .modifier(ApxyDebugDetailListStyleModifier())
         .navigationTitle("Request Details")
+        .tint(theme.accent)
+        .apxyNavigationChrome(theme: theme, colorScheme: colorScheme)
         .overlay {
             VStack {
                 Spacer()
@@ -369,6 +379,7 @@ struct ApxyDebugRecordDetailView: View {
                         Text("\(metrics.transactions.count)")
                     }
                 }
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
 
                 ForEach(metrics.transactions) { transaction in
                     Section(transaction.fetchType.capitalized) {
@@ -415,8 +426,10 @@ struct ApxyDebugRecordDetailView: View {
                             Text(ApxyDebugValueFormatters.bytes(transaction.transfer.responseBodyBytesReceived))
                         }
                     }
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                 }
             }
+            .modifier(ApxyDebugDetailListStyleModifier())
             .navigationTitle("Metrics Timeline")
         } else {
             ApxyDebugTextDetailView(title: "Metrics Timeline", text: "", emptyMessage: "No task metrics captured")
@@ -424,12 +437,15 @@ struct ApxyDebugRecordDetailView: View {
     }
 
     private func selectableValue(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
+        return VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
                 .bold()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Text(value)
+                .foregroundStyle(theme.textPrimary)
                 .textSelection(.enabled)
         }
     }
@@ -550,7 +566,11 @@ struct ApxyDebugRecordDetailView: View {
         .from(record: record)
     }
 
-    private var statusColor: Color { statusPresentation.color }
+    private var theme: ApxyDebugThemePalette {
+        ApxyDebugTheme.palette(for: colorScheme)
+    }
+
+    private var statusColor: Color { statusPresentation.color(in: theme) }
     private var statusSymbol: String { statusPresentation.iconName }
 
     private var requestBodySize: Int64? {
@@ -699,19 +719,21 @@ struct ApxyDebugRecordDetailView: View {
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Record Detail iOS") {
+#Preview("Record Detail Light iOS") {
     NavigationStack {
         ApxyDebugRecordDetailView(record: ApxyDebugPreviewFixtures.failedRecord)
     }
     .apxyPreviewDetail(.iOS)
+    .preferredColorScheme(.light)
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-#Preview("Record Detail macOS") {
+#Preview("Record Detail Dark macOS") {
     NavigationStack {
         ApxyDebugRecordDetailView(record: ApxyDebugPreviewFixtures.failedRecord)
     }
     .apxyPreviewDetail(.macOS)
+    .preferredColorScheme(.dark)
 }
 #endif
 

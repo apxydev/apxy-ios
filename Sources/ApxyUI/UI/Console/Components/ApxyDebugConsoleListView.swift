@@ -16,8 +16,11 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
     let onResetFilters: () -> Void
     let onSelectRecord: (ApxyDebugRecord) -> Void
     let quickActions: (ApxyDebugRecord) -> QuickActions
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
         List(selection: selection) {
             Section {
                 ApxyDebugConsoleSummaryBar(
@@ -46,6 +49,9 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
         }
         .environment(\.defaultMinListRowHeight, 8)
         .listStyle(.plain)
+        .padding(.top, 8)
+        .scrollContentBackground(.hidden)
+        .background(theme.canvas.ignoresSafeArea())
     }
 
     private func recordRow(for record: ApxyDebugRecord) -> some View {
@@ -68,6 +74,7 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
         .modifier(ApxyDebugRecordSwipeActionsModifier(record: record))
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
         .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
     }
 
     private func rowLabel(for record: ApxyDebugRecord) -> some View {
@@ -78,15 +85,18 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
     }
 
     private var sidebarHeader: some View {
-        HStack {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
+        return HStack {
             Text(sidebarHeaderText)
                 .font(.subheadline.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Spacer()
             if !activeFilters.isEmpty {
                 Button("Reset", action: onResetFilters)
                     .buttonStyle(.plain)
                     .font(.subheadline.bold())
+                    .foregroundStyle(theme.accent)
             }
         }
         .padding(.vertical, 4)
@@ -103,28 +113,19 @@ struct ApxyDebugConsoleListView<QuickActions: View>: View {
     }
 
     private var emptyState: some View {
-        Group {
-            if #available(iOS 17.0, macOS 14.0, *) {
-                if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   activeFilters.isEmpty {
-                    ContentUnavailableView(
-                        "No Captured Requests",
-                        systemImage: "point.3.connected.trianglepath.dotted",
-                        description: Text("Start using the app and Apxy will list new requests here.")
-                    )
-                } else {
-                    ContentUnavailableView.search
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("No matching requests")
-                        .font(.headline)
-                    Text("Try adjusting the search or resetting filters.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 6)
-            }
+        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           activeFilters.isEmpty {
+            ApxyDebugPlaceholderPanel(
+                title: "No Captured Requests",
+                systemImage: "point.3.connected.trianglepath.dotted",
+                message: "Start using the app and Apxy will list new requests here."
+            )
+        } else {
+            ApxyDebugPlaceholderPanel(
+                title: "No Matching Requests",
+                systemImage: "line.3.horizontal.decrease.circle",
+                message: "Try adjusting the search or resetting filters."
+            )
         }
     }
 }

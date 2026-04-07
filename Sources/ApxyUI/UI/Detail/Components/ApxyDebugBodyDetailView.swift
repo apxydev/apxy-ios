@@ -8,6 +8,7 @@ struct ApxyDebugBodyDetailView: View {
     let presentation: ApxyDebugBodyFormatter.Presentation
     let quickCopyTitle: String?
     let onQuickCopy: (() -> Void)?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         List {
@@ -46,13 +47,7 @@ struct ApxyDebugBodyDetailView: View {
         case .unavailable:
             placeholder(icon: "exclamationmark.circle", title: "Unavailable", message: "The body size was recorded, but the payload itself is not available.")
         case let .text(text):
-            ScrollView([.vertical, .horizontal]) {
-                Text(text)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 4)
-            }
+            codeBlock(text)
         case let .binary(summary):
             placeholder(icon: "doc.fill", title: "Binary Body", message: "\(summary) of binary data was captured. Text preview is unavailable.")
         }
@@ -71,6 +66,30 @@ struct ApxyDebugBodyDetailView: View {
         ApxyDebugPlaceholderPanel(title: title, systemImage: icon, message: message)
             .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
             .listRowBackground(Color.clear)
+    }
+
+    private func codeBlock(_ text: String) -> some View {
+        let theme = ApxyDebugTheme.palette(for: colorScheme)
+
+        return ApxyDebugSurfaceCard(style: .terminal) {
+            VStack(alignment: .leading, spacing: 0) {
+                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                    .fill(theme.terminalBar)
+                    .frame(height: 10)
+                    .padding(.bottom, 12)
+
+                ScrollView([.vertical, .horizontal]) {
+                    Text(text)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(theme.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                }
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+        .listRowBackground(Color.clear)
     }
 }
 

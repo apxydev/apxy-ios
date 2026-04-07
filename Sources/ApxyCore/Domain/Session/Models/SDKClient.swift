@@ -1,7 +1,7 @@
 import Foundation
 
 /// Mirrors the Go `SDKClient` domain struct registered with APXY Core.
-public struct SDKClient: Codable, Sendable {
+public struct SDKClient: Codable, Sendable, Equatable {
     public var id: String
     public var platform: String
     public var deviceModel: String
