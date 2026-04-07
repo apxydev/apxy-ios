@@ -1,6 +1,6 @@
 # Apxy iOS
 
-`Apxy iOS` captures `URLSession` traffic from your app. You can inspect requests directly inside the app with `ApxyUI`, or send them to [APXY](https://github.com/apxydev/apxy) on desktop.
+`Apxy iOS` captures `URLSession` traffic from your app. You can inspect requests directly inside the app with `ApxyUI`, or send captured sessions and traffic logs to [APXY](https://github.com/apxydev/apxy) for inspection in the Web UI and CLI.
 
 ## Installation
 
@@ -42,9 +42,9 @@ That is enough to capture traffic from:
 
 `Apxy.start()` also enables the local debug console by default, so you can present `ApxyUI` to inspect request and response data inside the app.
 
-## Use With APXY Proxy
+## Use With APXY Server
 
-If you want to inspect request and response traffic from desktop, start Apxy with a server URL that points to APXY:
+If you want to send captured sessions and traffic logs to APXY Server, start Apxy with a server URL that points to APXY:
 
 ```swift
 import ApxyCore
@@ -58,6 +58,12 @@ APXY is a local HTTP/HTTPS debugging proxy and traffic inspection tool for devel
 
 - GitHub: https://github.com/apxydev/apxy
 - Website: https://apxy.dev
+
+## APXY Pro
+
+APXY has a free tier for first capture, but the full remote workflow is aimed at APXY Pro.
+
+If you want to keep sending SDK sessions and traffic logs without free-tier limits, use APXY Pro. It unlocks unlimited traffic history together with the full replay, diff, and advanced debugging workflow in APXY.
 
 ## Embedded Debug Console
 
