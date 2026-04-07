@@ -2,11 +2,12 @@ import SwiftUI
 @preconcurrency import Combine
 import ApxyCore
 
+@available(iOS 16.0, macOS 13.0, *)
 @MainActor
 final class ApxyDebugConsoleScreenModel: ObservableObject {
     let viewModel: ApxyDebugConsoleViewModel
     private let scope: ApxyDebugConsoleScope
-    private let navigationModel = ApxyDebugNavigationModel()
+    private let coordinator = ApxyDebugNavigationCoordinator()
     private var changeCancellables: Set<AnyCancellable> = []
 
     init(
@@ -29,8 +30,8 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
     var sessions: [ApxyDebugSession] { viewModel.sessions }
     var hosts: [String] { viewModel.hosts }
     var methods: [String] { viewModel.methods }
-    var compactRecordID: String? { navigationModel.compactRecordID }
-    var isShowingCompactDetail: Bool { navigationModel.isShowingCompactDetail }
+    var compactRecordID: String? { coordinator.compactRecordID }
+    var isShowingCompactDetail: Bool { coordinator.isShowingCompactDetail }
     var showsSessionFilter: Bool { scope.allowsSessionSelection }
 
     var selectedScopeSession: ApxyDebugSession? {
@@ -85,18 +86,26 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
         )
     }
 
+    var compactPathBinding: Binding<NavigationPath> {
+        coordinator.compactPathBinding
+    }
+
     var compactDetailPresentedBinding: Binding<Bool> {
         Binding(
-            get: { self.navigationModel.isShowingCompactDetail },
-            set: { self.navigationModel.setCompactDetailPresented($0) }
+            get: { self.coordinator.isShowingCompactDetail },
+            set: { self.coordinator.setCompactDetailPresented($0) }
         )
+    }
+
+    var inspectorPathBinding: Binding<NavigationPath> {
+        coordinator.inspectorPathBinding
     }
 
     var regularSelectionBinding: Binding<String?> {
         Binding(
-            get: { self.navigationModel.regularSelectionID ?? self.viewModel.selectedRecordID },
+            get: { self.coordinator.regularSelectionID ?? self.viewModel.selectedRecordID },
             set: { newValue in
-                self.navigationModel.syncRegularSelection(newValue)
+                self.coordinator.syncRegularSelection(newValue)
                 self.viewModel.selectedRecordID = newValue
             }
         )
@@ -107,12 +116,12 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
     }
 
     func clearRecords() {
-        navigationModel.clear()
+        coordinator.clear()
         viewModel.clear()
     }
 
-    func record(for route: ApxyDebugConsoleRoute) -> ApxyDebugRecord? {
-        navigationModel.record(for: route, in: viewModel.records)
+    func record(for route: ApxyDebugRoute) -> ApxyDebugRecord? {
+        coordinator.record(for: route, in: viewModel.records)
     }
 
     var compactSelectedRecord: ApxyDebugRecord? {
@@ -122,16 +131,16 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
 
     func selectRecord(_ record: ApxyDebugRecord, usesCompactNavigation: Bool) {
         viewModel.selectedRecordID = record.id
-        navigationModel.showRecord(record.id, usesCompactNavigation: usesCompactNavigation)
+        coordinator.showRecord(record.id, usesCompactNavigation: usesCompactNavigation)
     }
 
     func syncRegularSelectionIfNeeded(usesCompactNavigation: Bool) {
         guard !usesCompactNavigation else { return }
-        navigationModel.syncRegularSelection(viewModel.selectedRecordID)
+        coordinator.syncRegularSelection(viewModel.selectedRecordID)
     }
 
     func reconcileNavigation(usesCompactNavigation: Bool) {
-        let selectedRecordID = navigationModel.reconcile(
+        let selectedRecordID = coordinator.reconcile(
             records: viewModel.records,
             selectedRecordID: viewModel.selectedRecordID
         )
@@ -154,7 +163,7 @@ final class ApxyDebugConsoleScreenModel: ObservableObject {
             }
             .store(in: &changeCancellables)
 
-        navigationModel.objectWillChange
+        coordinator.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }

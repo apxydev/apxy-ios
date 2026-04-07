@@ -1,4 +1,4 @@
-enum ApxyDebugInspectorDestination: Hashable {
+enum ApxyDebugInspectorRoute: Hashable {
     case requestHeaders(ApxyDebugRequestKind)
     case requestCookies(ApxyDebugRequestKind)
     case requestBody(ApxyDebugRequestKind)

@@ -1,30 +1,64 @@
 import Foundation
+import SwiftUI
 import ApxyCore
 
+@available(iOS 16.0, macOS 13.0, *)
 @MainActor
-final class ApxyDebugNavigationModel: ObservableObject {
+final class ApxyDebugNavigationCoordinator: ObservableObject {
+    @Published var compactPath = NavigationPath()
     @Published private(set) var compactRecordID: String?
-    @Published private(set) var isShowingCompactDetail = false
     @Published private(set) var regularSelectionID: String?
+    @Published var inspectorPath = NavigationPath()
+
+    var compactPathBinding: Binding<NavigationPath> {
+        Binding(
+            get: { self.compactPath },
+            set: { newPath in
+                self.compactPath = newPath
+                if newPath.isEmpty {
+                    self.compactRecordID = nil
+                }
+            }
+        )
+    }
+
+    var inspectorPathBinding: Binding<NavigationPath> {
+        Binding(
+            get: { self.inspectorPath },
+            set: { self.inspectorPath = $0 }
+        )
+    }
+
+    var isShowingCompactDetail: Bool { !compactPath.isEmpty }
 
     func showRecord(_ recordID: String, usesCompactNavigation: Bool) {
         if usesCompactNavigation {
             compactRecordID = recordID
-            isShowingCompactDetail = true
+            compactPath.append(ApxyDebugRoute.record(recordID))
             return
+        }
+        if regularSelectionID != recordID {
+            resetInspectorPath()
         }
         regularSelectionID = recordID
     }
 
     func setCompactDetailPresented(_ isPresented: Bool) {
-        isShowingCompactDetail = isPresented
         if !isPresented {
+            compactPath = NavigationPath()
             compactRecordID = nil
         }
     }
 
     func syncRegularSelection(_ recordID: String?) {
+        if regularSelectionID != recordID {
+            resetInspectorPath()
+        }
         regularSelectionID = recordID
+    }
+
+    func resetInspectorPath() {
+        inspectorPath = NavigationPath()
     }
 
     @discardableResult
@@ -46,16 +80,20 @@ final class ApxyDebugNavigationModel: ObservableObject {
         }
 
         let fallbackID = records.first?.id
+        if regularSelectionID != fallbackID {
+            resetInspectorPath()
+        }
         regularSelectionID = fallbackID
         return fallbackID
     }
 
-    func record(for route: ApxyDebugConsoleRoute, in records: [ApxyDebugRecord]) -> ApxyDebugRecord? {
+    func record(for route: ApxyDebugRoute, in records: [ApxyDebugRecord]) -> ApxyDebugRecord? {
         records.first(where: { $0.id == route.recordID })
     }
 
     func clear() {
         setCompactDetailPresented(false)
         regularSelectionID = nil
+        resetInspectorPath()
     }
 }

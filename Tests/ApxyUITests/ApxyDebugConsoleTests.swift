@@ -487,7 +487,7 @@ struct ApxyDebugConsoleTests {
     }
 
     @Test @MainActor func navigationModelPresentsCompactDetailAndPrunesMissingRecord() {
-        let navigation = ApxyDebugNavigationModel()
+        let navigation = ApxyDebugNavigationCoordinator()
 
         navigation.showRecord("one", usesCompactNavigation: true)
 
@@ -503,7 +503,7 @@ struct ApxyDebugConsoleTests {
     }
 
     @Test @MainActor func navigationModelReconcilesRegularSelectionToVisibleRecords() {
-        let navigation = ApxyDebugNavigationModel()
+        let navigation = ApxyDebugNavigationCoordinator()
         let records = [
             makeRecord(id: "one", statusCode: 200),
             makeRecord(id: "two", statusCode: 500)

@@ -44,21 +44,45 @@ struct ApxyDebugRequestsView: View {
     @ViewBuilder
     var compactBody: some View {
         if ownsCompactNavigationStack {
-            NavigationStack {
-                compactNavigationContent
+            NavigationStack(path: screenModel.compactPathBinding) {
+                ownedCompactContent
             }
         } else {
-            compactNavigationContent
+            embeddedCompactContent
         }
     }
 
-    var compactNavigationContent: some View {
+    // Path-based navigation: used when this view owns its NavigationStack.
+    var ownedCompactContent: some View {
+        consoleList(selection: nil)
+            .navigationTitle(screenModel.navigationTitle)
+            .apxyInlineTitle()
+            .navigationDestination(for: ApxyDebugRoute.self) { route in
+                if let record = screenModel.record(for: route) {
+                    ApxyDebugRecordDetailView(record: record)
+                } else {
+                    placeholderDetail
+                }
+            }
+            .navigationDestination(for: ApxyDebugInspectorRoute.self) { destination in
+                if let record = screenModel.compactSelectedRecord {
+                    ApxyDebugInspectorRouteView(destination: destination, record: record)
+                }
+            }
+            .background(theme.canvas.ignoresSafeArea())
+    }
+
+    // Boolean-based navigation: used when embedded inside another NavigationStack (e.g. sessions tab).
+    var embeddedCompactContent: some View {
         consoleList(selection: nil)
             .navigationTitle(screenModel.navigationTitle)
             .apxyInlineTitle()
             .navigationDestination(isPresented: screenModel.compactDetailPresentedBinding) {
                 if let record = screenModel.compactSelectedRecord {
                     ApxyDebugRecordDetailView(record: record)
+                        .navigationDestination(for: ApxyDebugInspectorRoute.self) { destination in
+                            ApxyDebugInspectorRouteView(destination: destination, record: record)
+                        }
                 } else {
                     placeholderDetail
                 }
@@ -72,11 +96,18 @@ struct ApxyDebugRequestsView: View {
                 .navigationTitle(screenModel.navigationTitle)
                 .apxyInlineTitle()
         } detail: {
-            NavigationStack {
-                if let record = screenModel.selectedRecord {
-                    ApxyDebugRecordDetailView(record: record)
-                } else {
-                    placeholderDetail
+            NavigationStack(path: screenModel.inspectorPathBinding) {
+                Group {
+                    if let record = screenModel.selectedRecord {
+                        ApxyDebugRecordDetailView(record: record)
+                    } else {
+                        placeholderDetail
+                    }
+                }
+                .navigationDestination(for: ApxyDebugInspectorRoute.self) { destination in
+                    if let record = screenModel.selectedRecord {
+                        ApxyDebugInspectorRouteView(destination: destination, record: record)
+                    }
                 }
             }
         }
