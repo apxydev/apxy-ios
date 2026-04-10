@@ -46,7 +46,14 @@ struct ApxyDebugSessionsView: View {
                                 onShare: { viewModel.shareSession(id: $0) },
                                 onDelete: { viewModel.deleteSession(id: $0) }
                             ))
-                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                            .listRowInsets(
+                                EdgeInsets(
+                                    top: 6,
+                                    leading: ApxyDebugChrome.listRowInset,
+                                    bottom: 6,
+                                    trailing: ApxyDebugChrome.listRowInset
+                                )
+                            )
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                         }

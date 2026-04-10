@@ -4,6 +4,7 @@ import ApxyCore
 @MainActor
 final class ApxyDebugRuntimeSettingsViewModel: ObservableObject {
     private let debugStore: ApxyDebugStore?
+    private let defaultFlushInterval = 2.0
 
     enum StatusKind: Equatable {
         case success
@@ -11,12 +12,16 @@ final class ApxyDebugRuntimeSettingsViewModel: ObservableObject {
     }
 
     @Published var serverURL: String = ""
-    @Published var flushIntervalText: String = "2.0"
+    @Published var keyID: String = ""
+    @Published var clientSecret: String = ""
     @Published var capturedDomainsText: String = ""
     @Published var applyStatus: String?
     @Published var applyStatusKind: StatusKind?
     @Published var isApplying = false
     @Published var isClearingData = false
+
+    private static let rejectedRemoteSettingsMessage =
+        "Couldn't apply remote runtime settings. Check the server URL and signed ingest credentials."
 
     init(debugStore: ApxyDebugStore? = Apxy.activeDebugStore) {
         self.debugStore = debugStore
@@ -25,57 +30,6 @@ final class ApxyDebugRuntimeSettingsViewModel: ObservableObject {
 
     var isRuntimeActive: Bool {
         Apxy.activeRuntimeConfiguration != nil
-    }
-
-    var activeSummary: String {
-        guard let config = Apxy.activeRuntimeConfiguration else {
-            return "APXY is not running"
-        }
-
-        let destination = config.serverURL.flatMap { !$0.isEmpty ? $0 : nil } ?? "local-only"
-        let flush = String(format: "%.1f", config.flushInterval)
-        let domains = {
-            guard let capturedDomains = config.capturedDomains, !capturedDomains.isEmpty else {
-                return "all"
-            }
-            return capturedDomains.joined(separator: ", ")
-        }()
-
-        return "Endpoint: \(destination)" +
-            " • Flush interval: \(flush)s" +
-            " • Captured domains: \(domains)"
-    }
-
-    var activeDestinationSummary: String {
-        guard let config = Apxy.activeRuntimeConfiguration else {
-            return "Offline"
-        }
-
-        return config.serverURL.flatMap { !$0.isEmpty ? $0 : nil } ?? "Local-only"
-    }
-
-    var activeFlushIntervalSummary: String {
-        guard let config = Apxy.activeRuntimeConfiguration else {
-            return "--"
-        }
-
-        return String(format: "%.1fs", config.flushInterval)
-    }
-
-    var activeDomainSummary: String {
-        guard let config = Apxy.activeRuntimeConfiguration else {
-            return "--"
-        }
-
-        guard let capturedDomains = config.capturedDomains, !capturedDomains.isEmpty else {
-            return "All domains"
-        }
-
-        if capturedDomains.count == 1, let first = capturedDomains.first {
-            return first
-        }
-
-        return "\(capturedDomains.count) domains"
     }
 
     var applyButtonTitle: String {
@@ -89,13 +43,15 @@ final class ApxyDebugRuntimeSettingsViewModel: ObservableObject {
     func reloadFromActiveRuntime() {
         guard let config = Apxy.activeRuntimeConfiguration else {
             serverURL = ""
-            flushIntervalText = "2.0"
+            keyID = ""
+            clientSecret = ""
             capturedDomainsText = ""
             return
         }
 
-        serverURL = config.serverURL ?? ""
-        flushIntervalText = String(format: "%.1f", config.flushInterval)
+        serverURL = config.remote?.serverURL ?? ""
+        keyID = config.remote?.ingestCredentials.keyID ?? ""
+        clientSecret = config.remote?.ingestCredentials.clientSecret ?? ""
         capturedDomainsText = config.capturedDomains?.joined(separator: ", ") ?? ""
     }
 
@@ -104,28 +60,41 @@ final class ApxyDebugRuntimeSettingsViewModel: ObservableObject {
 
         let trimmedServerURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedServerURL = trimmedServerURL.isEmpty ? nil : trimmedServerURL
+        let trimmedKeyID = keyID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedClientSecret = clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        let flushInterval = Apxy.activeRuntimeConfiguration?.flushInterval ?? defaultFlushInterval
 
-        guard let flushInterval = Double(flushIntervalText.trimmingCharacters(in: .whitespacesAndNewlines)),
-              flushInterval > 0 else {
-            applyStatus = "Enter a valid flush interval (> 0)."
+        if normalizedServerURL != nil && (trimmedKeyID.isEmpty || trimmedClientSecret.isEmpty) {
+            applyStatus = "Enter both Key ID and Client Secret for remote ingest."
             applyStatusKind = .error
             return
         }
-
         let parsedDomains = parseDomains(capturedDomainsText)
+        let remote: ApxyRemoteConfiguration? = {
+            guard let normalizedServerURL else { return nil }
+            return ApxyRemoteConfiguration(
+                serverURL: normalizedServerURL,
+                ingestCredentials: ApxyIngestCredentials(keyID: trimmedKeyID, clientSecret: trimmedClientSecret)
+            )
+        }()
 
         isApplying = true
         defer { isApplying = false }
 
         let request = ApxyRuntimeConfiguration(
-            serverURL: normalizedServerURL,
+            remote: remote,
             flushInterval: flushInterval,
             capturedDomains: parsedDomains
         )
-        Apxy.reconfigure(request)
-        reloadFromActiveRuntime()
-        applyStatus = "Applied runtime settings (invalid URL fallback: local-only if needed)."
-        applyStatusKind = .success
+        if Apxy.reconfigure(request) {
+            reloadFromActiveRuntime()
+            applyStatus = "Applied runtime settings."
+            applyStatusKind = .success
+            return
+        }
+
+        applyStatus = Self.rejectedRemoteSettingsMessage
+        applyStatusKind = .error
     }
 
     func clearAllData() {

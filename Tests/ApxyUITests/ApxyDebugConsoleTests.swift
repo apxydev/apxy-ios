@@ -526,37 +526,44 @@ struct ApxyDebugConsoleTests {
 
     @Test @MainActor func runtimeSettingsViewModelReflectsAndAppliesActiveConfig() {
         Apxy.stop()
-        Apxy.start()
+        Apxy.start(options: ApxyOptions(flushInterval: 4.5))
+        let credentials = ApxyIngestCredentials(keyID: "sdki_test", clientSecret: "secret")
 
         let viewModel = ApxyDebugRuntimeSettingsViewModel()
-        #expect(viewModel.activeSummary.contains("local-only"))
 
         viewModel.serverURL = "http://127.0.0.1:8083"
-        viewModel.flushIntervalText = "4.5"
+        viewModel.keyID = credentials.keyID
+        viewModel.clientSecret = credentials.clientSecret
         viewModel.capturedDomainsText = "api.example.com, *.example.com"
         viewModel.applyChanges()
 
         #expect(Apxy.activeRuntimeConfiguration == ApxyRuntimeConfiguration(
-            serverURL: "http://127.0.0.1:8083",
+            remote: ApxyRemoteConfiguration(
+                serverURL: "http://127.0.0.1:8083",
+                ingestCredentials: credentials
+            ),
             flushInterval: 4.5,
             capturedDomains: ["api.example.com", "*.example.com"]
         ))
-        #expect(viewModel.activeSummary.contains("http://127.0.0.1:8083"))
 
         Apxy.stop()
     }
 
-    @Test @MainActor func runtimeSettingsViewModelRejectsInvalidFlushInterval() {
+    @Test @MainActor func runtimeSettingsViewModelReportsRejectedRemoteConfiguration() {
         Apxy.stop()
         Apxy.start()
 
         let viewModel = ApxyDebugRuntimeSettingsViewModel()
-        viewModel.flushIntervalText = "zero"
+        viewModel.serverURL = "not a url"
+        viewModel.keyID = "sdki_test"
+        viewModel.clientSecret = "secret"
         viewModel.applyChanges()
 
-        #expect(viewModel.applyStatus == "Enter a valid flush interval (> 0).")
+        #expect(viewModel.applyStatus == "Couldn't apply remote runtime settings. Check the server URL and signed ingest credentials.")
+        #expect(viewModel.applyStatusKind == .error)
+        #expect(viewModel.serverURL == "not a url")
         #expect(Apxy.activeRuntimeConfiguration == ApxyRuntimeConfiguration(
-            serverURL: nil,
+            remote: nil,
             flushInterval: 2.0,
             capturedDomains: nil
         ))

@@ -17,6 +17,7 @@ protocol SessionTransporting: Actor, Sendable {
 actor SessionTransport: SessionTransporting {
     private let serverURL: URL
     private let session: URLSession
+    private let signer: SDKRequestSigner
 
     private let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
@@ -29,8 +30,9 @@ actor SessionTransport: SessionTransporting {
         return encoder
     }()
 
-    init(serverURL: URL) {
+    init(serverURL: URL, signer: SDKRequestSigner) {
         self.serverURL = serverURL
+        self.signer = signer
 
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = ["X-Apxy-SDK-Internal": "1"]
@@ -90,6 +92,7 @@ actor SessionTransport: SessionTransporting {
         request.httpMethod = method
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        signer.sign(&request, body: body)
 
         let (_, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode >= 400 {

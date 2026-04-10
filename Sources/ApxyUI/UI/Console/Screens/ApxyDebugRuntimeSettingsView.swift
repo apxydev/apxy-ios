@@ -5,7 +5,8 @@ import ApxyCore
 struct ApxyDebugRuntimeSettingsView: View {
     private enum Field: Hashable {
         case serverURL
-        case flushInterval
+        case keyID
+        case clientSecret
         case capturedDomains
     }
 
@@ -20,24 +21,27 @@ struct ApxyDebugRuntimeSettingsView: View {
 
         ScrollView {
             VStack(spacing: 16) {
-                summaryCard(theme: theme)
                 configurationCard(theme: theme)
-                actionCard(theme: theme)
+                applyAction(theme: theme)
             }
             .frame(maxWidth: 760)
-            .padding(16)
+            .padding(ApxyDebugChrome.screenPadding)
             .frame(maxWidth: .infinity)
         }
 #if os(iOS)
         .scrollDismissesKeyboard(.interactively)
 #endif
         .background(theme.canvas.ignoresSafeArea())
-        .navigationTitle("Runtime Settings")
+        .navigationTitle("Settings")
         .apxyInlineTitle()
         .tint(theme.accent)
         .apxyNavigationChrome(theme: theme, colorScheme: colorScheme)
         .toolbar {
 #if os(iOS)
+            ToolbarItem(placement: .topBarTrailing) {
+                clearDataToolbarButton(theme: theme)
+            }
+
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
 
@@ -45,90 +49,11 @@ struct ApxyDebugRuntimeSettingsView: View {
                     focusedField = nil
                 }
             }
-#endif
-        }
-    }
-
-    private func summaryCard(theme: ApxyDebugThemePalette) -> some View {
-        ApxyDebugSurfaceCard(style: .elevated, topAccent: theme.accent) {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(theme.accent)
-                        .frame(width: 44, height: 44)
-                        .background(theme.accentSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Tune the active debug session")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(theme.textPrimary)
-
-                        Text(summaryDescription)
-                            .font(.subheadline)
-                            .foregroundStyle(theme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 0)
-                }
-
-                ViewThatFits {
-                    HStack(spacing: 8) {
-                        sessionBadge(
-                            title: viewModel.isRuntimeActive ? "Live Session" : "APXY Stopped",
-                            tone: viewModel.isRuntimeActive ? .success : .warning,
-                            theme: theme
-                        )
-                        sessionBadge(title: "Session Only", tone: .accent, theme: theme)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        sessionBadge(
-                            title: viewModel.isRuntimeActive ? "Live Session" : "APXY Stopped",
-                            tone: viewModel.isRuntimeActive ? .success : .warning,
-                            theme: theme
-                        )
-                        sessionBadge(title: "Session Only", tone: .accent, theme: theme)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Text(viewModel.activeSummary)
-                    .font(.subheadline)
-                    .foregroundStyle(theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                LazyVGrid(
-                    columns: [
-                        GridItem(.adaptive(minimum: 132, maximum: 220), spacing: 12, alignment: .top)
-                    ],
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-                    summaryMetric(
-                        title: "Destination",
-                        value: viewModel.activeDestinationSummary,
-                        systemImage: "dot.radiowaves.left.and.right",
-                        tone: .accent,
-                        theme: theme
-                    )
-                    summaryMetric(
-                        title: "Flush",
-                        value: viewModel.activeFlushIntervalSummary,
-                        systemImage: "timer",
-                        tone: .warning,
-                        theme: theme
-                    )
-                    summaryMetric(
-                        title: "Domains",
-                        value: viewModel.activeDomainSummary,
-                        systemImage: "globe",
-                        tone: .success,
-                        theme: theme
-                    )
-                }
+#else
+            ToolbarItem(placement: .primaryAction) {
+                clearDataToolbarButton(theme: theme)
             }
+#endif
         }
     }
 
@@ -140,7 +65,7 @@ struct ApxyDebugRuntimeSettingsView: View {
                         .font(.headline)
                         .foregroundStyle(theme.textPrimary)
 
-                    Text("Adjust where traffic goes, how often APXY flushes, and which domains are captured.")
+                    Text("Adjust where traffic goes, which credential signs remote ingest, and which domains are captured.")
                         .font(.subheadline)
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -152,12 +77,38 @@ struct ApxyDebugRuntimeSettingsView: View {
                     systemImage: "server.rack",
                     tint: .accent
                 ) {
-                    TextField("http://127.0.0.1:8083", text: $viewModel.serverURL)
+                    TextField(
+                        "",
+                        text: $viewModel.serverURL,
+                    )
+                    .textFieldStyle(.plain)
+                    .foregroundColor(theme.textPrimary)
+                    .focused($focusedField, equals: .serverURL)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusedField = .keyID
+                    }
+#if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+#endif
+                }
+
+                Divider()
+                    .overlay(theme.border)
+
+                ApxyDebugRuntimeSettingsFieldBlock(
+                    title: "Key ID",
+                    detail: "Use the key ID generated by APXY for signed SDK ingest.",
+                    systemImage: "key",
+                    tint: .accent
+                ) {
+                    TextField("Paste key id", text: $viewModel.keyID)
                         .textFieldStyle(.plain)
-                        .focused($focusedField, equals: .serverURL)
+                        .focused($focusedField, equals: .keyID)
                         .submitLabel(.next)
                         .onSubmit {
-                            focusedField = .flushInterval
+                            focusedField = .clientSecret
                         }
 #if os(iOS)
                         .textInputAutocapitalization(.never)
@@ -169,20 +120,21 @@ struct ApxyDebugRuntimeSettingsView: View {
                     .overlay(theme.border)
 
                 ApxyDebugRuntimeSettingsFieldBlock(
-                    title: "Flush interval",
-                    detail: "Use a positive number of seconds. Smaller values stream updates faster but flush more often.",
-                    systemImage: "timer",
+                    title: "Client Secret",
+                    detail: "Stored only for the active session. Leave both credential fields empty to stay local-only.",
+                    systemImage: "lock",
                     tint: .warning
                 ) {
-                    TextField("2.0", text: $viewModel.flushIntervalText)
+                    SecureField("Paste client secret", text: $viewModel.clientSecret)
                         .textFieldStyle(.plain)
-                        .focused($focusedField, equals: .flushInterval)
+                        .focused($focusedField, equals: .clientSecret)
                         .submitLabel(.next)
                         .onSubmit {
                             focusedField = .capturedDomains
                         }
 #if os(iOS)
-                        .keyboardType(.decimalPad)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
 #endif
                 }
 
@@ -207,122 +159,28 @@ struct ApxyDebugRuntimeSettingsView: View {
                         .autocorrectionDisabled()
 #endif
                 }
-            }
-        }
-    }
 
-    private func actionCard(theme: ApxyDebugThemePalette) -> some View {
-        ApxyDebugSurfaceCard(
-            style: .plain,
-            topAccent: actionAccent(in: theme)
-        ) {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Apply to current session")
-                        .font(.headline)
-                        .foregroundStyle(theme.textPrimary)
+                if focusedField != nil {
+                    HStack {
+                        Spacer()
 
-                    Text("Changes take effect immediately for the active runtime and reset when the app restarts.")
-                        .font(.subheadline)
-                        .foregroundStyle(theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Button {
-                    focusedField = nil
-                    viewModel.applyChanges()
-                } label: {
-                    HStack(spacing: 12) {
-                        if viewModel.isApplying {
-                            ProgressView()
-                                .tint(theme.canvas)
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.body.weight(.semibold))
-                        }
-
-                        Text(viewModel.applyButtonTitle)
-                            .font(.headline)
-
-                        Spacer(minLength: 12)
-
-                        Text("Session only")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(theme.canvas.opacity(0.16), in: Capsule())
-                    }
-                    .foregroundStyle(theme.canvas)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .frame(maxWidth: .infinity)
-                    .background(theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(viewModel.isApplying || viewModel.isClearingData)
-                .opacity(viewModel.isApplying || viewModel.isClearingData ? 0.85 : 1)
-
-                Divider()
-                    .overlay(theme.border)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Debug data")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(theme.textPrimary)
-
-                    Text("Remove all captured requests and session history from this device without changing the active runtime configuration.")
-                        .font(.footnote)
-                        .foregroundStyle(theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button(role: .destructive) {
-                        isPresentingClearConfirmation = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            if viewModel.isClearingData {
-                                ProgressView()
-                                    .tint(theme.error)
-                            } else {
-                                Image(systemName: "trash")
-                                    .font(.body.weight(.semibold))
-                            }
-
-                            Text(viewModel.clearButtonTitle)
-                                .font(.headline)
-
-                            Spacer(minLength: 12)
-                        }
-                        .foregroundStyle(theme.error)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                        .frame(maxWidth: .infinity)
-                        .background(theme.error.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(theme.error.opacity(0.24))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(viewModel.isApplying || viewModel.isClearingData)
-                    .opacity(viewModel.isApplying || viewModel.isClearingData ? 0.85 : 1)
-                    .confirmationDialog(
-                        "Clear all debug data?",
-                        isPresented: $isPresentingClearConfirmation,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Clear All Data", role: .destructive) {
+                        Button("Done") {
                             focusedField = nil
-                            viewModel.clearAllData()
                         }
-
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("This removes all captured requests and sessions stored on this device.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.accent)
                     }
                 }
 
                 if let applyStatus = viewModel.applyStatus, let kind = viewModel.applyStatusKind {
                     ApxyDebugRuntimeSettingsStatusBanner(message: applyStatus, kind: kind)
+                }
+
+                if !viewModel.isRuntimeActive {
+                    Text("APXY is not running right now. Runtime changes apply once an active debug session exists.")
+                        .font(.footnote)
+                        .foregroundStyle(theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Text("Invalid server URLs fall back to local-only mode without interrupting the rest of the debug session.")
@@ -333,88 +191,116 @@ struct ApxyDebugRuntimeSettingsView: View {
         }
     }
 
-    private var summaryDescription: String {
-        if viewModel.isRuntimeActive {
-            "Review the live configuration and make temporary adjustments without restarting the app."
-        } else {
-            "APXY is not running right now. You can prepare values here, but a live session is required before runtime changes take effect."
-        }
-    }
+    private func applyAction(theme: ApxyDebugThemePalette) -> some View {
+        Button {
+            focusedField = nil
+            viewModel.applyChanges()
+        } label: {
+            HStack(spacing: 12) {
+                if viewModel.isApplying {
+                    ProgressView()
+                        .tint(theme.canvas)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.body.weight(.semibold))
+                }
 
-    private func actionAccent(in theme: ApxyDebugThemePalette) -> Color {
-        switch viewModel.applyStatusKind {
-        case .error:
-            theme.error
-        case .success:
-            theme.success
-        case nil:
-            theme.accent
-        }
-    }
+                Text(viewModel.applyButtonTitle)
+                    .font(.headline)
 
-    private func sessionBadge(title: String, tone: ApxyDebugThemeTone, theme: ApxyDebugThemePalette) -> some View {
-        let tint = tone.color(in: theme)
+                Spacer(minLength: 12)
 
-        return Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(tint.opacity(0.12), in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(tint.opacity(0.28))
-            }
-    }
-
-    private func summaryMetric(
-        title: String,
-        value: String,
-        systemImage: String,
-        tone: ApxyDebugThemeTone,
-        theme: ApxyDebugThemePalette
-    ) -> some View {
-        let tint = tone.color(in: theme)
-
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: systemImage)
+                Text("Session only")
                     .font(.caption.weight(.semibold))
-                Text(title)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.9)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(theme.canvas.opacity(0.16), in: Capsule())
             }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(tint)
-
-            Text(value)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(theme.textPrimary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.9)
-                .fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(theme.canvas)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity)
+            .background(theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
-        .background(theme.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(theme.border)
+        .buttonStyle(.plain)
+        .disabled(viewModel.isApplying || viewModel.isClearingData)
+        .opacity(viewModel.isApplying || viewModel.isClearingData ? 0.85 : 1)
+    }
+
+    private func clearDataToolbarButton(theme: ApxyDebugThemePalette) -> some View {
+        Button(role: .destructive) {
+            focusedField = nil
+            isPresentingClearConfirmation = true
+        } label: {
+            if viewModel.isClearingData {
+                ProgressView()
+                    .tint(theme.error)
+            } else {
+                Image(systemName: "trash")
+                    .foregroundStyle(theme.error)
+            }
+        }
+        .disabled(viewModel.isApplying || viewModel.isClearingData)
+        .accessibilityLabel(viewModel.clearButtonTitle)
+        .popover(isPresented: $isPresentingClearConfirmation, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+            clearDataPopover(theme: theme)
+        }
+    }
+
+    private func clearDataPopover(theme: ApxyDebugThemePalette) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Clear all debug data?")
+                .font(.headline)
+                .foregroundStyle(theme.textPrimary)
+
+            Text("This removes all captured requests and sessions stored on this device.")
+                .font(.subheadline)
+                .foregroundStyle(theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button("Clear All Data", role: .destructive) {
+                isPresentingClearConfirmation = false
+                focusedField = nil
+                viewModel.clearAllData()
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(20)
+        .frame(width: 280, alignment: .leading)
+#if os(iOS)
+        .modifier(ApxyDebugPopoverAdaptationModifier())
+#endif
+    }
+}
+
+#if os(iOS)
+@available(iOS 16.0, macOS 13.0, *)
+private struct ApxyDebugPopoverAdaptationModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 16.4, *) {
+            content.presentationCompactAdaptation(.popover)
+        } else {
+            content
         }
     }
 }
+#endif
 
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
 #Preview("Runtime Settings Light iOS") {
     Apxy.stop()
-    Apxy.start(serverURL: "http://127.0.0.1:8083")
+    Apxy.start(options: ApxyOptions(
+        remote: .init(
+            serverURL: "http://127.0.0.1:8083",
+            ingestCredentials: .init(keyID: "sdki_preview", clientSecret: "preview-secret")
+        )
+    ))
 
     let viewModel = ApxyDebugRuntimeSettingsViewModel()
     viewModel.serverURL = "http://127.0.0.1:9090"
-    viewModel.flushIntervalText = "4.5"
     viewModel.capturedDomainsText = "api.example.com, *.example.com"
-    viewModel.applyStatus = "Applied runtime settings (invalid URL fallback: local-only if needed)."
+    viewModel.applyStatus = "Applied runtime settings."
     viewModel.applyStatusKind = .success
 
     return NavigationStack {
@@ -430,9 +316,8 @@ struct ApxyDebugRuntimeSettingsView: View {
 
     let viewModel = ApxyDebugRuntimeSettingsViewModel()
     viewModel.serverURL = ""
-    viewModel.flushIntervalText = "zero"
     viewModel.capturedDomainsText = "staging.apxy.dev"
-    viewModel.applyStatus = "Enter a valid flush interval (> 0)."
+    viewModel.applyStatus = "Couldn't apply remote runtime settings. Check the server URL and signed ingest credentials."
     viewModel.applyStatusKind = .error
 
     return NavigationStack {

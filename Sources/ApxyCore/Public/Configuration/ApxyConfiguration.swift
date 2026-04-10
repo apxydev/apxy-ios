@@ -32,20 +32,41 @@ public enum ApxyConnectionEvent: Sendable {
 /// Runtime-only configuration that can be applied after startup.
 ///
 /// The values are session-scoped and not persisted automatically.
+public struct ApxyIngestCredentials: Sendable, Equatable {
+    public var keyID: String
+    public var clientSecret: String
+
+    public init(keyID: String, clientSecret: String) {
+        self.keyID = keyID
+        self.clientSecret = clientSecret
+    }
+}
+
+/// Remote APXY Core destination paired with the credentials required for signed ingest.
+public struct ApxyRemoteConfiguration: Sendable, Equatable {
+    public var serverURL: String
+    public var ingestCredentials: ApxyIngestCredentials
+
+    public init(serverURL: String, ingestCredentials: ApxyIngestCredentials) {
+        self.serverURL = serverURL
+        self.ingestCredentials = ingestCredentials
+    }
+}
+
 public struct ApxyRuntimeConfiguration: Sendable, Equatable {
-    /// APXY server URL string. `nil` uses local-only mode.
-    public var serverURL: String?
+    /// Remote APXY destination. `nil` uses local-only mode.
+    public var remote: ApxyRemoteConfiguration?
     /// Seconds between flushes for buffered HTTP mode.
     public var flushInterval: TimeInterval
     /// Optional list of allowed captured domains. `nil` captures all hosts.
     public var capturedDomains: [String]?
 
     public init(
-        serverURL: String? = nil,
+        remote: ApxyRemoteConfiguration? = nil,
         flushInterval: TimeInterval = 2.0,
         capturedDomains: [String]? = nil
     ) {
-        self.serverURL = serverURL
+        self.remote = remote
         self.flushInterval = flushInterval
         self.capturedDomains = capturedDomains
     }
@@ -59,6 +80,8 @@ public struct ApxyOptions: Sendable {
     public var enableInRelease: Bool
     /// Ring buffer capacity for offline records. Default: `100`.
     public var bufferSize: Int
+    /// Remote APXY destination and signed SDK ingest credentials.
+    public var remote: ApxyRemoteConfiguration?
     /// Seconds between HTTP batch flushes. Default: `2.0`.
     public var flushInterval: TimeInterval
     /// SDK log verbosity. Default: `.warning`.
@@ -80,7 +103,7 @@ public struct ApxyOptions: Sendable {
     /// transition starts a new session instead of resuming the current one.
     /// Default: 1800 seconds (30 minutes).
     public var sessionIdleTimeout: TimeInterval
-    /// In-memory debug console storage. Disabled by default.
+    /// In-memory debug console storage. Enabled by default.
     public var debugConsole: ApxyDebugOptions
     /// Bounds request/response payload capture work. Default: `.performanceFirst`.
     public var capturePolicy: ApxyCapturePolicy
@@ -89,6 +112,7 @@ public struct ApxyOptions: Sendable {
         transport: ApxyTransport = .http,
         enableInRelease: Bool = false,
         bufferSize: Int = 100,
+        remote: ApxyRemoteConfiguration? = nil,
         flushInterval: TimeInterval = 2.0,
         logLevel: ApxyLogLevel = .warning,
         onConnectionEvent: (@Sendable (ApxyConnectionEvent) -> Void)? = nil,
@@ -96,12 +120,13 @@ public struct ApxyOptions: Sendable {
         webSocketReconnectCooldown: TimeInterval = 60,
         capturedDomains: [String]? = nil,
         sessionIdleTimeout: TimeInterval = 1800,
-        debugConsole: ApxyDebugOptions = .disabled,
+        debugConsole: ApxyDebugOptions = .enabled,
         capturePolicy: ApxyCapturePolicy = .performanceFirst
     ) {
         self.transport = transport
         self.enableInRelease = enableInRelease
         self.bufferSize = bufferSize
+        self.remote = remote
         self.flushInterval = flushInterval
         self.logLevel = logLevel
         self.onConnectionEvent = onConnectionEvent

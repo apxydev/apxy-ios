@@ -7,6 +7,10 @@ enum ApxyDebugChrome {
     static let controlCornerRadius: CGFloat = 10
     static let cardCornerRadius: CGFloat = 14
     static let contentPadding: CGFloat = 14
+    static let screenPadding: CGFloat = 16
+    static let listRowInset: CGFloat = 16
+    static let cardRowHorizontalPadding: CGFloat = contentPadding
+    static let cardRowVerticalPadding: CGFloat = 10
 
     static func subtleFill(in theme: ApxyDebugThemePalette) -> Color {
         theme.surface

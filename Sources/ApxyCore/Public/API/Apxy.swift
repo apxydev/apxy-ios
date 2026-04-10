@@ -10,7 +10,17 @@ import Foundation
 ///
 /// ## Send traffic to desktop APXY
 /// ```swift
-/// Apxy.start(serverURL: "http://192.168.1.5:8083")
+/// Apxy.start(
+///     options: ApxyOptions(
+///         remote: .init(
+///             serverURL: "http://192.168.1.5:8083",
+///             ingestCredentials: .init(
+///                 keyID: "<sdk-key-id>",
+///                 clientSecret: "<sdk-client-secret>"
+///             )
+///         ),
+///     )
+/// )
 /// ```
 ///
 /// ## Full config
@@ -41,7 +51,7 @@ public final class Apxy {
 #endif
     private var startupTask: Task<Void, Never>?
 
-    private init(serverURL: URL?, options: ApxyOptions) {
+    private init(options: ApxyOptions) {
         let onEvent = options.onConnectionEvent
         let connectionStateTracker = ConnectionStateTracker { event in
             guard let onEvent else { return }
@@ -51,12 +61,12 @@ public final class Apxy {
         }
         self.connectionStateTracker = connectionStateTracker
 
-        let normalizedServerURL = Self.normalizeServerURL(serverURL)
+        let resolvedRemote = Self.resolveRemoteTransportConfiguration(options.remote)
         let normalizedFlushInterval = Self.normalizeFlushInterval(options.flushInterval)
         let normalizedCapturedDomains = Self.normalizeDomains(options.capturedDomains)
 
         self.runtimeConfiguration = ApxyRuntimeConfiguration(
-            serverURL: normalizedServerURL?.absoluteString,
+            remote: resolvedRemote.remote,
             flushInterval: normalizedFlushInterval,
             capturedDomains: normalizedCapturedDomains
         )
@@ -67,14 +77,15 @@ public final class Apxy {
         self.webSocketReconnectCooldown = options.webSocketReconnectCooldown
         self.capturedDomains = normalizedCapturedDomains
 
-        if normalizedServerURL != nil, options.debugConsole.isEnabled {
+        if resolvedRemote.serverURL != nil, options.debugConsole.isEnabled {
             SDKLogger.warn(
                 "ApxyCore: remote transport and debugConsole are both enabled; this increases capture overhead"
             )
         }
 
         let (sessionTransport, recordTransport, deliveryMode) = Self.makeTransports(
-            serverURL: normalizedServerURL,
+            serverURL: resolvedRemote.serverURL,
+            ingestCredentials: resolvedRemote.ingestCredentials,
             transportMode: transportMode,
             webSocketMaxReconnectAttempts: webSocketMaxReconnectAttempts,
             webSocketReconnectCooldown: webSocketReconnectCooldown,
@@ -85,7 +96,7 @@ public final class Apxy {
             transport: sessionTransport,
             recordTransport: recordTransport,
             debugStore: self.debugStore,
-            serverURL: normalizedServerURL?.absoluteString,
+            serverURL: resolvedRemote.serverURL?.absoluteString,
             connectionStateTracker: connectionStateTracker,
             bufferCapacity: options.bufferSize,
             recordDeliveryMode: deliveryMode,
@@ -117,10 +128,10 @@ public final class Apxy {
 #endif
 
         let transportLabel: String
-        if normalizedServerURL == nil {
+        if resolvedRemote.serverURL == nil {
             transportLabel = "local-only"
         } else {
-            transportLabel = (deliveryMode == .immediate) ? "webSocket" : "http"
+            transportLabel = "signed-http"
         }
         SDKLogger.debug(
             "started transport=\(transportLabel) bufferSize=\(options.bufferSize) flushInterval=\(normalizedFlushInterval)"
@@ -130,51 +141,51 @@ public final class Apxy {
     /// Start the SDK in local-only mode. This convenience entry point enables the
     /// embedded debug console by default so `ApxyUI` can inspect captured traffic
     /// without extra configuration.
-    public static func start(options: ApxyOptions = .init()) {
-        var options = options
-        if !options.debugConsole.isEnabled {
-            options.debugConsole = .init(isEnabled: true)
-        }
-
-#if !DEBUG
-        guard options.enableInRelease else {
-            SDKLogger.debug("ApxyCore: disabled in Release build (set enableInRelease: true to override)")
-            return
-        }
-#endif
-
-        SDKLogger.level = options.logLevel
-
-        let instance = Apxy(serverURL: nil, options: options)
-        sharedLock.lock()
-        defer { sharedLock.unlock() }
-        guard shared == nil else { return }
-        shared = instance
-        instance.activate()
+    public static func start() {
+        _ = start(options: .init())
     }
 
-    /// Start the SDK. Safe to call multiple times — subsequent calls are no-ops.
-    public static func start(serverURL: String, options: ApxyOptions = .init()) {
+    /// Start the SDK with explicit options. Safe to call multiple times —
+    /// subsequent calls are no-ops.
+    @discardableResult
+    public static func start(options: ApxyOptions = .init()) -> Bool {
 #if !DEBUG
         guard options.enableInRelease else {
             SDKLogger.debug("ApxyCore: disabled in Release build (set enableInRelease: true to override)")
-            return
+            return false
         }
 #endif
 
-        guard let url = normalizeServerURL(serverURL) else {
-            SDKLogger.warn("ApxyCore: invalid serverURL '\(serverURL)' — SDK not started")
-            return
+        sharedLock.lock()
+        let alreadyStarted = shared != nil
+        sharedLock.unlock()
+        if alreadyStarted {
+            SDKLogger.level = options.logLevel
+            return true
+        }
+
+        if let validationError = Self.validateRemoteTransportConfiguration(options.remote) {
+            SDKLogger.warn(validationError.logMessage)
+            return false
         }
 
         SDKLogger.level = options.logLevel
 
-        let instance = Apxy(serverURL: url, options: options)
+        let instance = Apxy(options: options)
         sharedLock.lock()
         defer { sharedLock.unlock() }
-        guard shared == nil else { return }
+        guard shared == nil else { return true }
         shared = instance
         instance.activate()
+        return true
+    }
+
+    /// Start the SDK with an explicit remote configuration.
+    @discardableResult
+    public static func start(remote: ApxyRemoteConfiguration, options: ApxyOptions = .init()) -> Bool {
+        var options = options
+        options.remote = remote
+        return start(options: options)
     }
 
     /// Stop the SDK, flush remaining records, and release all resources.
@@ -190,9 +201,10 @@ public final class Apxy {
     ///
     /// Use this to modify server endpoint, flush interval, and captured domains
     /// while traffic capture is active.
-    public static func reconfigure(_ configuration: ApxyRuntimeConfiguration) {
-        guard let instance = activeInstance() else { return }
-        instance.applyRuntimeConfiguration(configuration)
+    @discardableResult
+    public static func reconfigure(_ configuration: ApxyRuntimeConfiguration) -> Bool {
+        guard let instance = activeInstance() else { return false }
+        return instance.applyRuntimeConfiguration(configuration)
     }
 
     /// Returns the current runtime configuration for the active SDK instance.
@@ -336,6 +348,14 @@ public final class Apxy {
         return normalizeServerURL(value.absoluteString)
     }
 
+    private static func normalizeIngestCredentials(_ value: ApxyIngestCredentials?) -> ApxyIngestCredentials? {
+        guard let value else { return nil }
+        let keyID = value.keyID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientSecret = value.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyID.isEmpty, !clientSecret.isEmpty else { return nil }
+        return ApxyIngestCredentials(keyID: keyID, clientSecret: clientSecret)
+    }
+
     private static func normalizeFlushInterval(_ value: TimeInterval) -> TimeInterval {
         max(1, value)
     }
@@ -348,51 +368,118 @@ public final class Apxy {
         return normalized.isEmpty ? nil : normalized
     }
 
+    private struct ResolvedRemoteTransport {
+        let remote: ApxyRemoteConfiguration?
+        let serverURL: URL?
+        let ingestCredentials: ApxyIngestCredentials?
+    }
+
+    private enum RemoteConfigurationValidationError {
+        case invalidServerURL(String)
+        case invalidIngestCredentials
+        case insecureHTTPRequiresDebugBuild
+
+        var logMessage: String {
+            switch self {
+            case .invalidServerURL(let value):
+                return "ApxyCore: invalid serverURL '\(value)' — configuration rejected"
+            case .invalidIngestCredentials:
+                return "ApxyCore: valid signed ingest credentials are required for remote delivery"
+            case .insecureHTTPRequiresDebugBuild:
+                return "ApxyCore: insecure HTTP serverURL is only allowed in DEBUG builds"
+            }
+        }
+    }
+
+    private static func validateRemoteTransportConfiguration(
+        _ remote: ApxyRemoteConfiguration?
+    ) -> RemoteConfigurationValidationError? {
+        guard let remote else { return nil }
+        let trimmedServerURL = remote.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedServerURL = normalizeServerURL(trimmedServerURL)
+        guard let normalizedServerURL else {
+            return .invalidServerURL(trimmedServerURL)
+        }
+        guard normalizeIngestCredentials(remote.ingestCredentials) != nil else {
+            return .invalidIngestCredentials
+        }
+        guard let normalizedHTTPBaseURL = normalizedHTTPBaseURL(normalizedServerURL),
+              allowRemoteHTTPBaseURL(normalizedHTTPBaseURL) else {
+            return .insecureHTTPRequiresDebugBuild
+        }
+        return nil
+    }
+
+    private static func resolveRemoteTransportConfiguration(
+        _ remote: ApxyRemoteConfiguration?
+    ) -> ResolvedRemoteTransport {
+        guard let remote,
+              let normalizedServerURL = normalizeServerURL(remote.serverURL),
+              let normalizedHTTPBaseURL = normalizedHTTPBaseURL(normalizedServerURL),
+              let normalizedCredentials = normalizeIngestCredentials(remote.ingestCredentials) else {
+            return ResolvedRemoteTransport(remote: nil, serverURL: nil, ingestCredentials: nil)
+        }
+        return ResolvedRemoteTransport(
+            remote: ApxyRemoteConfiguration(
+                serverURL: normalizedHTTPBaseURL.absoluteString,
+                ingestCredentials: normalizedCredentials
+            ),
+            serverURL: normalizedHTTPBaseURL,
+            ingestCredentials: normalizedCredentials
+        )
+    }
+
+    private static func normalizedHTTPBaseURL(_ value: URL?) -> URL? {
+        guard let value else { return nil }
+        guard var components = URLComponents(url: value, resolvingAgainstBaseURL: true) else {
+            return nil
+        }
+        switch components.scheme?.lowercased() {
+        case "ws":
+            components.scheme = "http"
+        case "wss":
+            components.scheme = "https"
+        default:
+            break
+        }
+        return components.url
+    }
+
+    private static func allowRemoteHTTPBaseURL(_ url: URL) -> Bool {
+        switch url.scheme?.lowercased() {
+        case "https":
+            return true
+        case "http":
+#if DEBUG
+            return true
+#else
+            return false
+#endif
+        default:
+            return false
+        }
+    }
+
     private static func makeTransports(
         serverURL: URL?,
+        ingestCredentials: ApxyIngestCredentials?,
         transportMode: ApxyTransport,
         webSocketMaxReconnectAttempts: Int,
         webSocketReconnectCooldown: TimeInterval,
         connectionStateTracker: ConnectionStateTracker
     ) -> (SessionTransporting, RecordTransport, RecordDeliveryMode) {
-        guard let serverURL else {
+        guard let serverURL, let ingestCredentials else {
             return (LocalOnlySessionTransport(), LocalOnlyRecordTransport(), .buffered)
         }
 
-        let sessionTransport = SessionTransport(serverURL: serverURL)
-
-        let useWebSocket: Bool
-        switch transportMode {
-        case .webSocket:
-            useWebSocket = true
-        case .http:
-            useWebSocket = false
-        case .auto:
-            if #available(iOS 13.0, macOS 10.15, *) {
-                useWebSocket = true
-            } else {
-                useWebSocket = false
-            }
+        if transportMode == .webSocket || transportMode == .auto {
+            SDKLogger.warn("ApxyCore: protected remote ingest uses signed HTTP; WebSocket transport is disabled")
         }
-
-        if useWebSocket, #available(iOS 13.0, macOS 10.15, *) {
-            return (
-                sessionTransport,
-                WebSocketTransport(
-                    serverURL: serverURL,
-                    connectionStateTracker: connectionStateTracker,
-                    reconnectPolicy: WebSocketReconnectPolicy(
-                        maxAttempts: webSocketMaxReconnectAttempts,
-                        cooldown: webSocketReconnectCooldown
-                    )
-                ),
-                .immediate
-            )
-        }
+        let signer = SDKRequestSigner(credentials: ingestCredentials)
 
         return (
-            sessionTransport,
-            HTTPTransport(serverURL: serverURL, connectionStateTracker: connectionStateTracker),
+            SessionTransport(serverURL: serverURL, signer: signer),
+            HTTPTransport(serverURL: serverURL, connectionStateTracker: connectionStateTracker, signer: signer),
             .buffered
         )
     }
@@ -405,18 +492,18 @@ public final class Apxy {
         }
     }
 
-    private func applyRuntimeConfiguration(_ configuration: ApxyRuntimeConfiguration) {
-        let normalizedServerURL = Self.normalizeServerURL(configuration.serverURL)
-        if configuration.serverURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
-           normalizedServerURL == nil {
-            SDKLogger.warn("ApxyCore: invalid serverURL '\(configuration.serverURL ?? "")' — using local-only mode")
+    private func applyRuntimeConfiguration(_ configuration: ApxyRuntimeConfiguration) -> Bool {
+        if let validationError = Self.validateRemoteTransportConfiguration(configuration.remote) {
+            SDKLogger.warn(validationError.logMessage)
+            return false
         }
+        let resolvedRemote = Self.resolveRemoteTransportConfiguration(configuration.remote)
 
         let normalizedDomains = Self.normalizeDomains(configuration.capturedDomains)
         let normalizedFlushInterval = Self.normalizeFlushInterval(configuration.flushInterval)
 
         runtimeConfiguration = ApxyRuntimeConfiguration(
-            serverURL: normalizedServerURL?.absoluteString,
+            remote: resolvedRemote.remote,
             flushInterval: normalizedFlushInterval,
             capturedDomains: normalizedDomains
         )
@@ -424,7 +511,8 @@ public final class Apxy {
         applyCapturedDomains(normalizedDomains)
 
         let (sessionTransport, recordTransport, deliveryMode) = Self.makeTransports(
-            serverURL: normalizedServerURL,
+            serverURL: resolvedRemote.serverURL,
+            ingestCredentials: resolvedRemote.ingestCredentials,
             transportMode: transportMode,
             webSocketMaxReconnectAttempts: webSocketMaxReconnectAttempts,
             webSocketReconnectCooldown: webSocketReconnectCooldown,
@@ -435,26 +523,31 @@ public final class Apxy {
             await sessionManager.reconfigure(
                 transport: sessionTransport,
                 recordTransport: recordTransport,
-                serverURL: normalizedServerURL?.absoluteString,
+                serverURL: resolvedRemote.serverURL?.absoluteString,
                 recordDeliveryMode: deliveryMode,
                 flushInterval: normalizedFlushInterval
             )
         }
+        return true
     }
 
     private func shareLocalSession(id: String) async throws {
         guard let debugStore else {
             throw ApxyLocalSessionShareError.debugConsoleDisabled
         }
-        guard let serverURLString = runtimeConfiguration.serverURL,
-              let serverURL = Self.normalizeServerURL(serverURLString) else {
+        guard let remote = runtimeConfiguration.remote,
+              let serverURL = Self.normalizeServerURL(remote.serverURL) else {
             throw ApxyLocalSessionShareError.missingServerURL
+        }
+        guard let ingestCredentials = Self.normalizeIngestCredentials(remote.ingestCredentials) else {
+            throw ApxyLocalSessionShareError.missingIngestCredentials
         }
 
         let payload = try await debugStore.loadSessionForSharing(id: id)
         let connectionTracker = ConnectionStateTracker { _ in }
-        let sessionTransport = SessionTransport(serverURL: serverURL)
-        let recordTransport = HTTPTransport(serverURL: serverURL, connectionStateTracker: connectionTracker)
+        let signer = SDKRequestSigner(credentials: ingestCredentials)
+        let sessionTransport = SessionTransport(serverURL: serverURL, signer: signer)
+        let recordTransport = HTTPTransport(serverURL: serverURL, connectionStateTracker: connectionTracker, signer: signer)
 
         await debugStore.markSessionSyncState(
             id: id,

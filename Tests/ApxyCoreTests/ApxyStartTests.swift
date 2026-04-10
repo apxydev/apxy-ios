@@ -15,6 +15,7 @@ struct ApxyStartTests {
         }
 
         #expect(usesHTTPByDefault)
+        #expect(options.debugConsole == .enabled)
     }
 
     @Test func localOnlyStartEnablesDebugStoreByDefault() {
@@ -28,21 +29,40 @@ struct ApxyStartTests {
         #expect(Apxy.activeDebugStore == nil)
     }
 
+    @Test func explicitOptionsStartKeepsDebugStoreEnabledByDefault() {
+        Apxy.stop()
+
+        Apxy.start(options: ApxyOptions(flushInterval: 2.0))
+
+        #expect(Apxy.activeDebugStore != nil)
+
+        Apxy.stop()
+    }
+
     @Test func reconfigureUpdatesActiveRuntimeConfiguration() {
         Apxy.stop()
         Apxy.start(options: ApxyOptions(flushInterval: 2.0, capturedDomains: ["api.initial.dev"]))
+        let credentials = ApxyIngestCredentials(keyID: "sdki_test", clientSecret: "secret")
 
-        Apxy.reconfigure(
-            ApxyRuntimeConfiguration(
-                serverURL: "http://127.0.0.1:8083",
-                flushInterval: 5.0,
-                capturedDomains: ["api.example.com", "*.example.com"]
+        #expect(
+            Apxy.reconfigure(
+                ApxyRuntimeConfiguration(
+                    remote: ApxyRemoteConfiguration(
+                        serverURL: "http://127.0.0.1:8083",
+                        ingestCredentials: credentials
+                    ),
+                    flushInterval: 5.0,
+                    capturedDomains: ["api.example.com", "*.example.com"]
+                )
             )
         )
 
         #expect(
             Apxy.activeRuntimeConfiguration == ApxyRuntimeConfiguration(
-                serverURL: "http://127.0.0.1:8083",
+                remote: ApxyRemoteConfiguration(
+                    serverURL: "http://127.0.0.1:8083",
+                    ingestCredentials: credentials
+                ),
                 flushInterval: 5.0,
                 capturedDomains: ["api.example.com", "*.example.com"]
             )
@@ -51,25 +71,47 @@ struct ApxyStartTests {
         Apxy.stop()
     }
 
-    @Test func reconfigureFallsBackToLocalOnlyForInvalidURL() {
+    @Test func remoteStartRequiresIngestCredentials() {
         Apxy.stop()
-        Apxy.start(serverURL: "http://127.0.0.1:8083")
-
-        Apxy.reconfigure(
-            ApxyRuntimeConfiguration(
-                serverURL: "not a url",
-                flushInterval: 3.0,
-                capturedDomains: ["api.example.com"]
-            )
-        )
 
         #expect(
-            Apxy.activeRuntimeConfiguration == ApxyRuntimeConfiguration(
-                serverURL: nil,
-                flushInterval: 3.0,
-                capturedDomains: ["api.example.com"]
-            )
+            Apxy.start(options: ApxyOptions(
+                remote: ApxyRemoteConfiguration(
+                    serverURL: "http://127.0.0.1:8083",
+                    ingestCredentials: ApxyIngestCredentials(keyID: "", clientSecret: "")
+                )
+            )) == false
         )
+
+        #expect(Apxy.activeRuntimeConfiguration == nil)
+        #expect(Apxy.activeDebugStore == nil)
+    }
+
+    @Test func reconfigureRejectsInvalidRemoteURLAndKeepsActiveConfiguration() {
+        Apxy.stop()
+        Apxy.start(options: ApxyOptions(
+            remote: ApxyRemoteConfiguration(
+                serverURL: "http://127.0.0.1:8083",
+                ingestCredentials: ApxyIngestCredentials(keyID: "sdki_test", clientSecret: "secret")
+            )
+        ))
+
+        let initialConfiguration = Apxy.activeRuntimeConfiguration
+
+        #expect(
+            Apxy.reconfigure(
+                ApxyRuntimeConfiguration(
+                    remote: ApxyRemoteConfiguration(
+                        serverURL: "not a url",
+                        ingestCredentials: ApxyIngestCredentials(keyID: "sdki_test", clientSecret: "secret")
+                    ),
+                    flushInterval: 3.0,
+                    capturedDomains: ["api.example.com"]
+                )
+            ) == false
+        )
+
+        #expect(Apxy.activeRuntimeConfiguration == initialConfiguration)
 
         Apxy.stop()
     }
@@ -77,11 +119,16 @@ struct ApxyStartTests {
     @Test func runtimeConfigurationDoesNotPersistAcrossRestart() {
         Apxy.stop()
         Apxy.start()
-        Apxy.reconfigure(
-            ApxyRuntimeConfiguration(
-                serverURL: "http://127.0.0.1:8083",
-                flushInterval: 4.0,
-                capturedDomains: ["api.example.com"]
+        #expect(
+            Apxy.reconfigure(
+                ApxyRuntimeConfiguration(
+                    remote: ApxyRemoteConfiguration(
+                        serverURL: "http://127.0.0.1:8083",
+                        ingestCredentials: ApxyIngestCredentials(keyID: "sdki_test", clientSecret: "secret")
+                    ),
+                    flushInterval: 4.0,
+                    capturedDomains: ["api.example.com"]
+                )
             )
         )
 
@@ -90,7 +137,7 @@ struct ApxyStartTests {
 
         #expect(
             Apxy.activeRuntimeConfiguration == ApxyRuntimeConfiguration(
-                serverURL: nil,
+                remote: nil,
                 flushInterval: 2.0,
                 capturedDomains: nil
             )

@@ -59,8 +59,8 @@ struct ApxyDebugRecordRow: View {
                 }
             }
         }
-        .padding(.vertical, 7)
-        .padding(.horizontal, 6)
+        .padding(.vertical, ApxyDebugChrome.cardRowVerticalPadding)
+        .padding(.horizontal, ApxyDebugChrome.cardRowHorizontalPadding)
         .background(rowBackground)
         .overlay {
             RoundedRectangle(cornerRadius: ApxyDebugChrome.controlCornerRadius, style: .continuous)
