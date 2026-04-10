@@ -45,8 +45,8 @@ struct ApxyDebugSessionRow: View {
                     .foregroundStyle(theme.textMuted)
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 6)
+        .padding(.vertical, ApxyDebugChrome.cardRowVerticalPadding)
+        .padding(.horizontal, ApxyDebugChrome.cardRowHorizontalPadding)
         .background(ApxyDebugChrome.elevatedFill(in: theme))
         .overlay {
             RoundedRectangle(cornerRadius: ApxyDebugChrome.controlCornerRadius, style: .continuous)

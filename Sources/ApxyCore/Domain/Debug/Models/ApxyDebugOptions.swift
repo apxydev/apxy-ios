@@ -23,5 +23,6 @@ public struct ApxyDebugOptions: Sendable, Equatable {
         self.storeURL = storeURL
     }
 
+    public static let enabled = ApxyDebugOptions(isEnabled: true)
     public static let disabled = ApxyDebugOptions(isEnabled: false)
 }

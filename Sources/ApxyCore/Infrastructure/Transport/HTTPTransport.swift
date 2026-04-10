@@ -5,6 +5,7 @@ actor HTTPTransport: RecordTransport {
     private let serverURL: URL
     private let session: URLSession
     private let connectionStateTracker: ConnectionStateTracker
+    private let signer: SDKRequestSigner
 
     private let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
@@ -12,9 +13,10 @@ actor HTTPTransport: RecordTransport {
         return encoder
     }()
 
-    init(serverURL: URL, connectionStateTracker: ConnectionStateTracker) {
+    init(serverURL: URL, connectionStateTracker: ConnectionStateTracker, signer: SDKRequestSigner) {
         self.serverURL = serverURL
         self.connectionStateTracker = connectionStateTracker
+        self.signer = signer
 
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = ["X-Apxy-SDK-Internal": "1"]
@@ -37,6 +39,7 @@ actor HTTPTransport: RecordTransport {
         request.httpMethod = "POST"
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        signer.sign(&request, body: body)
 
         do {
             let (_, response) = try await session.data(for: request)
