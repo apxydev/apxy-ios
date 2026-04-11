@@ -1,5 +1,7 @@
 # Apxy iOS
 
+![APXY Multi-Platform Network Logger](assets/apxy.png)
+
 `Apxy iOS` captures `URLSession` traffic from your app.
 
 Use it in one of two ways:
